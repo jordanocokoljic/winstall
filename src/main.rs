@@ -67,11 +67,13 @@ mod winstall {
                 "-d" | "--directory" => context.directory_args = true,
                 "-p" | "--preserve-timestamps" => context.preserve_timestamps = true,
                 "-b" | "--backup" => {
-                    context.backup_type =
-                        match config.version_control.clone().unwrap_or_default().as_str() {
+                    context.backup_type = Backup::Existing;
+
+                    if let Some(vc) = &config.version_control {
+                        context.backup_type = match vc.as_str() {
                             "none" | "off" => Backup::None,
                             "simple" | "never" => Backup::Simple,
-                            "existing" | "nil" | "" => Backup::Existing,
+                            "existing" | "nil" => Backup::Existing,
                             "numbered" | "t" => Backup::Numbered,
                             var => {
                                 return Err(Error::InvalidArgument(
@@ -80,7 +82,8 @@ mod winstall {
                                 ))
                             }
                         }
-                }
+                    }
+                },
                 _ => (),
             }
 

@@ -10,6 +10,7 @@ mod winstall {
     pub struct Context {
         verbose: bool,
         create_parents: bool,
+        directory_args: bool,
     }
 
     pub fn get_context<T: Iterator<Item = String>>(args: T) -> Context {
@@ -22,7 +23,7 @@ mod winstall {
             [ ] --version*
             [ ] -b, --backup[=method]
             [ ] -p, --preserve-timestamps
-            [ ] -d, --directory
+            [x] -d, --directory
             [x] -v, --verbose
             [ ] -t, --target-directory=DIRECTORY
             [x] -D
@@ -34,13 +35,18 @@ mod winstall {
         */
 
         let mut idx = 0;
-        let mut context = Context { verbose: false, create_parents: false };
+        let mut context = Context {
+            verbose: false,
+            create_parents: false,
+            directory_args: false,
+        };
 
         while index_at_end(idx) {
             let opt_or_arg = collected[idx].split("=").nth(0).unwrap();
             match opt_or_arg {
                 "-v" | "--verbose" => context.verbose = true,
                 "-D" => context.create_parents = true,
+                "-d" | "--directory" => context.directory_args = true,
                 _ => (),
             }
 
@@ -64,15 +70,43 @@ mod winstall {
             let tests: Vec<TestCase> = vec![
                 TestCase {
                     args: vec!["--verbose"],
-                    expected: Context { verbose: true, create_parents: false },
+                    expected: Context {
+                        verbose: true,
+                        create_parents: false,
+                        directory_args: false,
+                    },
                 },
                 TestCase {
                     args: vec!["-v"],
-                    expected: Context { verbose: true, create_parents: false },
+                    expected: Context {
+                        verbose: true,
+                        create_parents: false,
+                        directory_args: false,
+                    },
                 },
                 TestCase {
                     args: vec!["-D"],
-                    expected: Context { verbose: false, create_parents: true },
+                    expected: Context {
+                        verbose: false,
+                        create_parents: true,
+                        directory_args: false,
+                    },
+                },
+                TestCase {
+                    args: vec!["--directory"],
+                    expected: Context {
+                        verbose: false,
+                        create_parents: false,
+                        directory_args: true,
+                    },
+                },
+                TestCase {
+                    args: vec!["-d"],
+                    expected: Context {
+                        verbose: false,
+                        create_parents: false,
+                        directory_args: true,
+                    },
                 },
             ];
 

@@ -1,19 +1,19 @@
 use std::env;
 
 fn main() {
-    let context = winstall::get_context(env::args().skip(1));
+    let context = winstall::get_options(env::args().skip(1));
     println!("{context:?}");
 }
 
 mod winstall {
     #[derive(PartialEq, Debug)]
-    pub struct Context {
+    pub struct Options {
         verbose: bool,
         create_parents: bool,
         directory_args: bool,
     }
 
-    pub fn get_context<T: Iterator<Item = String>>(args: T) -> Context {
+    pub fn get_options<T: Iterator<Item = String>>(args: T) -> Options {
         let collected = args.collect::<Vec<_>>();
         let index_at_end = |index: usize| index < collected.len();
 
@@ -35,7 +35,7 @@ mod winstall {
         */
 
         let mut idx = 0;
-        let mut context = Context {
+        let mut context = Options {
             verbose: false,
             create_parents: false,
             directory_args: false,
@@ -58,19 +58,19 @@ mod winstall {
 
     #[cfg(test)]
     mod tests {
-        use crate::winstall::{get_context, Context};
+        use crate::winstall::{get_options, Options};
 
         #[test]
-        pub fn test_get_context() {
+        pub fn test_get_options() {
             struct TestCase<'a> {
                 args: Vec<&'a str>,
-                expected: Context,
+                expected: Options,
             }
 
             let tests: Vec<TestCase> = vec![
                 TestCase {
                     args: vec!["--verbose"],
-                    expected: Context {
+                    expected: Options {
                         verbose: true,
                         create_parents: false,
                         directory_args: false,
@@ -78,7 +78,7 @@ mod winstall {
                 },
                 TestCase {
                     args: vec!["-v"],
-                    expected: Context {
+                    expected: Options {
                         verbose: true,
                         create_parents: false,
                         directory_args: false,
@@ -86,7 +86,7 @@ mod winstall {
                 },
                 TestCase {
                     args: vec!["-D"],
-                    expected: Context {
+                    expected: Options {
                         verbose: false,
                         create_parents: true,
                         directory_args: false,
@@ -94,7 +94,7 @@ mod winstall {
                 },
                 TestCase {
                     args: vec!["--directory"],
-                    expected: Context {
+                    expected: Options {
                         verbose: false,
                         create_parents: false,
                         directory_args: true,
@@ -102,7 +102,7 @@ mod winstall {
                 },
                 TestCase {
                     args: vec!["-d"],
-                    expected: Context {
+                    expected: Options {
                         verbose: false,
                         create_parents: false,
                         directory_args: true,
@@ -112,7 +112,7 @@ mod winstall {
 
             for test in tests {
                 let args = test.args.iter().map(|arg| arg.to_string());
-                let outcome = get_context(args);
+                let outcome = get_options(args);
                 assert_eq!(test.expected, outcome, "args: {:?}", test.args);
             }
         }

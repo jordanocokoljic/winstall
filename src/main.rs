@@ -11,6 +11,7 @@ mod winstall {
         verbose: bool,
         create_parents: bool,
         directory_args: bool,
+        preserve_timestamps: bool,
     }
 
     pub fn get_options<T: Iterator<Item = String>>(args: T) -> Options {
@@ -22,7 +23,7 @@ mod winstall {
             [ ] --help*
             [ ] --version*
             [ ] -b, --backup[=method]
-            [ ] -p, --preserve-timestamps
+            [x] -p, --preserve-timestamps
             [x] -d, --directory
             [x] -v, --verbose
             [ ] -t, --target-directory=DIRECTORY
@@ -39,6 +40,7 @@ mod winstall {
             verbose: false,
             create_parents: false,
             directory_args: false,
+            preserve_timestamps: false,
         };
 
         while index_at_end(idx) {
@@ -47,6 +49,7 @@ mod winstall {
                 "-v" | "--verbose" => context.verbose = true,
                 "-D" => context.create_parents = true,
                 "-d" | "--directory" => context.directory_args = true,
+                "-p" | "--preserve-timestamps" => context.preserve_timestamps = true,
                 _ => (),
             }
 
@@ -74,6 +77,7 @@ mod winstall {
                         verbose: true,
                         create_parents: false,
                         directory_args: false,
+                        preserve_timestamps: false,
                     },
                 },
                 TestCase {
@@ -82,6 +86,7 @@ mod winstall {
                         verbose: true,
                         create_parents: false,
                         directory_args: false,
+                        preserve_timestamps: false,
                     },
                 },
                 TestCase {
@@ -90,6 +95,7 @@ mod winstall {
                         verbose: false,
                         create_parents: true,
                         directory_args: false,
+                        preserve_timestamps: false,
                     },
                 },
                 TestCase {
@@ -98,6 +104,7 @@ mod winstall {
                         verbose: false,
                         create_parents: false,
                         directory_args: true,
+                        preserve_timestamps: false,
                     },
                 },
                 TestCase {
@@ -106,6 +113,25 @@ mod winstall {
                         verbose: false,
                         create_parents: false,
                         directory_args: true,
+                        preserve_timestamps: false,
+                    },
+                },
+                TestCase {
+                    args: vec!["--preserve-timestamps"],
+                    expected: Options {
+                        verbose: false,
+                        create_parents: false,
+                        directory_args: false,
+                        preserve_timestamps: true,
+                    },
+                },
+                TestCase {
+                    args: vec!["-p"],
+                    expected: Options {
+                        verbose: false,
+                        create_parents: false,
+                        directory_args: false,
+                        preserve_timestamps: true,
                     },
                 },
             ];

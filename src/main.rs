@@ -6,7 +6,7 @@ fn main() {
 }
 
 mod winstall {
-    #[derive(PartialEq, Debug)]
+    #[derive(PartialEq, Debug, Default)]
     pub struct Options {
         verbose: bool,
         create_parents: bool,
@@ -36,12 +36,7 @@ mod winstall {
         */
 
         let mut idx = 0;
-        let mut context = Options {
-            verbose: false,
-            create_parents: false,
-            directory_args: false,
-            preserve_timestamps: false,
-        };
+        let mut context = Options::default();
 
         while index_at_end(idx) {
             let opt_or_arg = collected[idx].split("=").nth(0).unwrap();
@@ -75,63 +70,49 @@ mod winstall {
                     args: vec!["--verbose"],
                     expected: Options {
                         verbose: true,
-                        create_parents: false,
-                        directory_args: false,
-                        preserve_timestamps: false,
+                        ..Default::default()
                     },
                 },
                 TestCase {
                     args: vec!["-v"],
                     expected: Options {
                         verbose: true,
-                        create_parents: false,
-                        directory_args: false,
-                        preserve_timestamps: false,
+                        ..Default::default()
                     },
                 },
                 TestCase {
                     args: vec!["-D"],
                     expected: Options {
-                        verbose: false,
                         create_parents: true,
-                        directory_args: false,
-                        preserve_timestamps: false,
+                        ..Default::default()
                     },
                 },
                 TestCase {
                     args: vec!["--directory"],
                     expected: Options {
-                        verbose: false,
-                        create_parents: false,
                         directory_args: true,
-                        preserve_timestamps: false,
+                        ..Default::default()
                     },
                 },
                 TestCase {
                     args: vec!["-d"],
                     expected: Options {
-                        verbose: false,
-                        create_parents: false,
                         directory_args: true,
-                        preserve_timestamps: false,
+                        ..Default::default()
                     },
                 },
                 TestCase {
                     args: vec!["--preserve-timestamps"],
                     expected: Options {
-                        verbose: false,
-                        create_parents: false,
-                        directory_args: false,
                         preserve_timestamps: true,
+                        ..Default::default()
                     },
                 },
                 TestCase {
                     args: vec!["-p"],
                     expected: Options {
-                        verbose: false,
-                        create_parents: false,
-                        directory_args: false,
                         preserve_timestamps: true,
+                        ..Default::default()
                     },
                 },
             ];

@@ -7,11 +7,18 @@ fn main() {
 
 mod winstall {
     #[derive(PartialEq, Debug)]
+    pub enum BackupMethod {
+        None,
+        Existing,
+    }
+
+    #[derive(PartialEq, Debug)]
     pub struct Options {
         verbose: bool,
         create_parents: bool,
         directory_args: bool,
         preserve_timestamps: bool,
+        backup_method: BackupMethod,
     }
 
     impl Default for Options {
@@ -21,6 +28,7 @@ mod winstall {
                 create_parents: false,
                 directory_args: false,
                 preserve_timestamps: false,
+                backup_method: BackupMethod::None,
             }
         }
     }
@@ -33,7 +41,7 @@ mod winstall {
         The options that are supported from `install` are:
             [ ] --help*
             [ ] --version*
-            [ ] -b, --backup[=method]
+            [-] -b, --backup[=method]
             [x] -p, --preserve-timestamps
             [x] -d, --directory
             [x] -v, --verbose
@@ -56,6 +64,7 @@ mod winstall {
                 "-D" => context.create_parents = true,
                 "-d" | "--directory" => context.directory_args = true,
                 "-p" | "--preserve-timestamps" => context.preserve_timestamps = true,
+                "-b" | "--backup" => context.backup_method = BackupMethod::Existing,
                 _ => (),
             }
 
@@ -67,7 +76,22 @@ mod winstall {
 
     #[cfg(test)]
     mod tests {
-        use crate::winstall::{get_options, Options};
+        use crate::winstall::{get_options, BackupMethod, Options};
+
+        #[test]
+        pub fn test_options_default() {
+            let options = Options::default();
+            assert_eq!(
+                Options {
+                    verbose: false,
+                    create_parents: false,
+                    directory_args: false,
+                    preserve_timestamps: false,
+                    backup_method: BackupMethod::None,
+                },
+                options,
+            );
+        }
 
         #[test]
         pub fn test_get_options() {
@@ -123,6 +147,20 @@ mod winstall {
                     args: vec!["-p"],
                     expected: Options {
                         preserve_timestamps: true,
+                        ..Default::default()
+                    },
+                },
+                TestCase {
+                    args: vec!["--backup"],
+                    expected: Options {
+                        backup_method: BackupMethod::Existing,
+                        ..Default::default()
+                    },
+                },
+                TestCase {
+                    args: vec!["-b"],
+                    expected: Options {
+                        backup_method: BackupMethod::Existing,
                         ..Default::default()
                     },
                 },

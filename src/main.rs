@@ -1,7 +1,9 @@
 use std::env;
 
 fn main() {
-    let config = winstall::Config{ version_control: None };
+    let config = winstall::Config {
+        version_control: None,
+    };
     let context = winstall::get_options(env::args().skip(1), &config);
     println!("{context:?}");
 }
@@ -35,7 +37,10 @@ mod winstall {
         pub version_control: Option<String>,
     }
 
-    pub fn get_options<A: Iterator<Item = String>>(args: A, config: &Config) -> Result<Options, Error> {
+    pub fn get_options<A: Iterator<Item = String>>(
+        args: A,
+        config: &Config,
+    ) -> Result<Options, Error> {
         let collected = args.collect::<Vec<_>>();
         let index_at_end = |index: usize| index < collected.len();
 
@@ -73,7 +78,7 @@ mod winstall {
                         context.backup_type = match vc.as_str() {
                             "none" | "off" => Backup::None,
                             "simple" | "never" => Backup::Simple,
-                            "existing" | "nil" => Backup::Existing,
+                            "existing" | "nil" | "" => Backup::Existing,
                             "numbered" | "t" => Backup::Numbered,
                             var => {
                                 return Err(Error::InvalidArgument(
@@ -83,7 +88,7 @@ mod winstall {
                             }
                         }
                     }
-                },
+                }
                 _ => (),
             }
 
@@ -95,7 +100,7 @@ mod winstall {
 
     #[cfg(test)]
     mod tests {
-        use super::{get_options, Backup, Error, Options, Config};
+        use super::{get_options, Backup, Config, Error, Options};
 
         #[test]
         pub fn test_options_default() {
@@ -185,7 +190,7 @@ mod winstall {
                 },
             ];
 
-            let config = Config{
+            let config = Config {
                 version_control: None,
             };
 
@@ -241,6 +246,13 @@ mod winstall {
                 },
                 TestCase {
                     version_control: "nil",
+                    expected: Ok(Options {
+                        backup_type: Backup::Existing,
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    version_control: "",
                     expected: Ok(Options {
                         backup_type: Backup::Existing,
                         ..Default::default()

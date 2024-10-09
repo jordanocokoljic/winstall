@@ -6,31 +6,20 @@ fn main() {
 }
 
 mod winstall {
-    #[derive(PartialEq, Debug)]
+    #[derive(PartialEq, Debug, Default)]
     pub enum BackupMethod {
+        #[default]
         None,
         Existing,
     }
 
-    #[derive(PartialEq, Debug)]
+    #[derive(PartialEq, Debug, Default)]
     pub struct Options {
         verbose: bool,
         create_parents: bool,
         directory_args: bool,
         preserve_timestamps: bool,
         backup_method: BackupMethod,
-    }
-
-    impl Default for Options {
-        fn default() -> Self {
-            Self {
-                verbose: false,
-                create_parents: false,
-                directory_args: false,
-                preserve_timestamps: false,
-                backup_method: BackupMethod::None,
-            }
-        }
     }
 
     pub fn get_options<T: Iterator<Item = String>>(args: T) -> Options {

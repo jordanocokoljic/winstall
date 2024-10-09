@@ -6,12 +6,23 @@ fn main() {
 }
 
 mod winstall {
-    #[derive(PartialEq, Debug, Default)]
+    #[derive(PartialEq, Debug)]
     pub struct Options {
         verbose: bool,
         create_parents: bool,
         directory_args: bool,
         preserve_timestamps: bool,
+    }
+
+    impl Default for Options {
+        fn default() -> Self {
+            Self {
+                verbose: false,
+                create_parents: false,
+                directory_args: false,
+                preserve_timestamps: false,
+            }
+        }
     }
 
     pub fn get_options<T: Iterator<Item = String>>(args: T) -> Options {

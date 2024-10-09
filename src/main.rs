@@ -9,7 +9,7 @@ fn main() {
 }
 
 mod winstall {
-    #[derive(PartialEq, Debug, Default)]
+    #[derive(PartialEq, Clone, Copy, Debug, Default)]
     pub enum Backup {
         #[default]
         None,
@@ -32,7 +32,7 @@ mod winstall {
         InvalidArgument(String, String),
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug, Default)]
     pub struct Config {
         pub version_control: Option<String>,
     }
@@ -64,28 +64,42 @@ mod winstall {
         let mut idx = 0;
         let mut context = Options::default();
 
+        fn determine_backup_type(indicator: &str, source: &str) -> Result<Backup, Error> {
+            match indicator {
+                "none" | "off" => Ok(Backup::None),
+                "simple" | "never" => Ok(Backup::Simple),
+                "existing" | "nil" | "" => Ok(Backup::Existing),
+                "numbered" | "t" => Ok(Backup::Numbered),
+                var => return Err(Error::InvalidArgument(var.to_string(), source.to_string())),
+            }
+        }
+
         while index_at_end(idx) {
-            let opt_or_arg = collected[idx].split("=").nth(0).unwrap();
+            let mut split = collected[idx].split("=");
+            let opt_or_arg = split.next().unwrap();
+
             match opt_or_arg {
                 "-v" | "--verbose" => context.verbose = true,
                 "-D" => context.create_parents = true,
                 "-d" | "--directory" => context.directory_args = true,
                 "-p" | "--preserve-timestamps" => context.preserve_timestamps = true,
-                "-b" | "--backup" => {
-                    context.backup_type = Backup::Existing;
-
-                    if let Some(vc) = &config.version_control {
-                        context.backup_type = match vc.as_str() {
-                            "none" | "off" => Backup::None,
-                            "simple" | "never" => Backup::Simple,
-                            "existing" | "nil" | "" => Backup::Existing,
-                            "numbered" | "t" => Backup::Numbered,
-                            var => {
-                                return Err(Error::InvalidArgument(
-                                    var.to_string(),
-                                    "$VERSION_CONTROL".to_string(),
-                                ))
-                            }
+                "-b" => {
+                    context.backup_type = {
+                        if let Some(vc) = &config.version_control {
+                            determine_backup_type(vc, "$VERSION_CONTROL")?
+                        } else {
+                            Backup::Existing
+                        }
+                    }
+                }
+                "--backup" => {
+                    context.backup_type = {
+                        if let Some(specified) = split.next() {
+                            determine_backup_type(&specified, "backup type")?
+                        } else if let Some(vc) = &config.version_control {
+                            determine_backup_type(vc, "$VERSION_CONTROL")?
+                        } else {
+                            Backup::Existing
                         }
                     }
                 }
@@ -118,7 +132,7 @@ mod winstall {
         }
 
         #[test]
-        pub fn test_get_options() {
+        pub fn test_get_options_simple() {
             struct TestCase<'a> {
                 args: Vec<&'a str>,
                 expected: Options,
@@ -174,20 +188,6 @@ mod winstall {
                         ..Default::default()
                     },
                 },
-                TestCase {
-                    args: vec!["--backup"],
-                    expected: Options {
-                        backup_type: Backup::Existing,
-                        ..Default::default()
-                    },
-                },
-                TestCase {
-                    args: vec!["-b"],
-                    expected: Options {
-                        backup_type: Backup::Existing,
-                        ..Default::default()
-                    },
-                },
             ];
 
             let config = Config {
@@ -202,95 +202,130 @@ mod winstall {
         }
 
         #[test]
-        fn get_options_reads_version_control_correctly() {
-            struct TestCase<'a> {
-                version_control: &'a str,
+        fn test_get_options_backup() {
+            let settings = vec![
+                ("none", Backup::None),
+                ("off", Backup::None),
+                ("simple", Backup::Simple),
+                ("never", Backup::Simple),
+                ("existing", Backup::Existing),
+                ("nil", Backup::Existing),
+                ("numbered", Backup::Numbered),
+                ("t", Backup::Numbered),
+            ];
+
+            struct TestCase {
+                argument: String,
+                config_value: Option<String>,
                 expected: Result<Options, Error>,
             }
 
-            let tests = vec![
+            let mut tests = vec![
                 TestCase {
-                    version_control: "none",
-                    expected: Ok(Options {
-                        backup_type: Backup::None,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "off",
-                    expected: Ok(Options {
-                        backup_type: Backup::None,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "simple",
-                    expected: Ok(Options {
-                        backup_type: Backup::Simple,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "never",
-                    expected: Ok(Options {
-                        backup_type: Backup::Simple,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "existing",
+                    argument: "-b".to_string(),
+                    config_value: None,
                     expected: Ok(Options {
                         backup_type: Backup::Existing,
                         ..Default::default()
                     }),
                 },
                 TestCase {
-                    version_control: "nil",
+                    argument: "--backup".to_string(),
+                    config_value: None,
                     expected: Ok(Options {
                         backup_type: Backup::Existing,
                         ..Default::default()
                     }),
                 },
                 TestCase {
-                    version_control: "",
-                    expected: Ok(Options {
-                        backup_type: Backup::Existing,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "numbered",
-                    expected: Ok(Options {
-                        backup_type: Backup::Numbered,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "t",
-                    expected: Ok(Options {
-                        backup_type: Backup::Numbered,
-                        ..Default::default()
-                    }),
-                },
-                TestCase {
-                    version_control: "other",
+                    argument: "-b".to_string(),
+                    config_value: Some("bad value".to_string()),
                     expected: Err(Error::InvalidArgument(
-                        "other".to_string(),
+                        "bad value".to_string(),
                         "$VERSION_CONTROL".to_string(),
+                    )),
+                },
+                TestCase {
+                    argument: "--backup=bad value".to_string(),
+                    config_value: None,
+                    expected: Err(Error::InvalidArgument(
+                        "bad value".to_string(),
+                        "backup type".to_string(),
                     )),
                 },
             ];
 
-            for test in tests {
-                let config = Config {
-                    version_control: Some(test.version_control.to_string()),
-                };
+            for (config, backup) in &settings {
+                tests.push(TestCase {
+                    argument: "-b".to_string(),
+                    config_value: Some(config.to_string()),
+                    expected: Ok(Options {
+                        backup_type: backup.clone(),
+                        ..Default::default()
+                    }),
+                });
 
-                let outcome = get_options(vec!["-b".to_string()].into_iter(), &config);
+                tests.push(TestCase {
+                    argument: "--backup".to_string(),
+                    config_value: Some(config.to_string()),
+                    expected: Ok(Options {
+                        backup_type: backup.clone(),
+                        ..Default::default()
+                    }),
+                });
+
+                tests.push(TestCase {
+                    argument: format!("--backup={}", config),
+                    config_value: None,
+                    expected: Ok(Options {
+                        backup_type: backup.clone(),
+                        ..Default::default()
+                    }),
+                });
+
+                tests.push(TestCase {
+                    argument: "--backup=bad value".to_string(),
+                    config_value: Some(config.to_string()),
+                    expected: Err(Error::InvalidArgument(
+                        "bad value".to_string(),
+                        "backup type".to_string(),
+                    )),
+                });
+
+                for (nested_config, _) in &settings {
+                    tests.push(TestCase {
+                        argument: format!("--backup={}", config),
+                        config_value: Some(nested_config.to_string()),
+                        expected: Ok(Options {
+                            backup_type: backup.clone(),
+                            ..Default::default()
+                        }),
+                    });
+
+                    tests.push(TestCase {
+                        argument: format!("--backup={}", config),
+                        config_value: Some("bad value".to_string()),
+                        expected: Ok(Options {
+                            backup_type: backup.clone(),
+                            ..Default::default()
+                        }),
+                    });
+                }
+            }
+
+            for test in tests {
+                let outcome = get_options(
+                    vec![test.argument.clone()].into_iter(),
+                    &Config {
+                        version_control: test.config_value.clone(),
+                        ..Default::default()
+                    },
+                );
+
                 assert_eq!(
                     test.expected, outcome,
-                    "env: $VERSION_CONTROL = {}",
-                    test.version_control
+                    "arg: {:?}; config: {:?}",
+                    test.argument, test.config_value
                 );
             }
         }

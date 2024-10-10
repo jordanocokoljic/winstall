@@ -1,3 +1,5 @@
+use std::env;
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Backup {
     None,
@@ -36,10 +38,19 @@ pub enum Error {
     InvalidArgument(String, String),
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Config {
-    pub version_control: Option<String>,
-    pub backup_suffix: Option<String>,
+    version_control: Option<String>,
+    backup_suffix: Option<String>,
+}
+
+impl Config {
+    pub fn from_env() -> Self {
+        Self {
+            version_control: env::var("VERSION_CONTROL").ok(),
+            backup_suffix: env::var("SIMPLE_BACKUP_SUFFIX").ok(),
+        }
+    }
 }
 
 pub fn get_options<A: IntoIterator<Item = String>>(
@@ -128,6 +139,8 @@ pub fn get_options<A: IntoIterator<Item = String>>(
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use super::{get_options, Backup, Config, Error, Options};
 
     #[test]
@@ -216,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_get_options_backup() {
-        let settings = vec![
+        const BACKUP_SETTINGS: &[(&'static str, Backup)] = &[
             ("none", Backup::None),
             ("off", Backup::None),
             ("simple", Backup::Simple),
@@ -268,7 +281,7 @@ mod tests {
             },
         ];
 
-        for (config, backup) in &settings {
+        for (config, backup) in BACKUP_SETTINGS {
             tests.push(TestCase {
                 argument: "-b".to_string(),
                 config_value: Some(config.to_string()),
@@ -305,7 +318,7 @@ mod tests {
                 )),
             });
 
-            for (nested_config, _) in &settings {
+            for (nested_config, _) in BACKUP_SETTINGS {
                 tests.push(TestCase {
                     argument: format!("--backup={}", config),
                     config_value: Some(nested_config.to_string()),
@@ -524,5 +537,30 @@ mod tests {
 
             assert_eq!(expected, outcome, "args: {:?}", test.args);
         }
+    }
+
+    #[test]
+    fn test_config_from_env() {
+        env::remove_var("VERSION_CONTROL");
+        env::remove_var("SIMPLE_BACKUP_SUFFIX");
+
+        assert_eq!(
+            Config {
+                version_control: None,
+                backup_suffix: None,
+            },
+            Config::from_env()
+        );
+
+        env::set_var("VERSION_CONTROL", "first");
+        env::set_var("SIMPLE_BACKUP_SUFFIX", "second");
+
+        assert_eq!(
+            Config {
+                version_control: Some("first".to_string()),
+                backup_suffix: Some("second".to_string()),
+            },
+            Config::from_env(),
+        )
     }
 }

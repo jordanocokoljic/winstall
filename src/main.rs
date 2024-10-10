@@ -63,7 +63,7 @@ mod winstall {
             [x] -v, --verbose
             [ ] -t, --target-directory=DIRECTORY
             [x] -D
-            [-] -S, --suffix=SUFFIX
+            [x] -S, --suffix=SUFFIX
 
         Items marked with a * are halting options - the standard execution
         is prevented, and an alternate action takes place - so they're not
@@ -119,6 +119,12 @@ mod winstall {
                 "-S" => {
                     if let Some(suffix) = arguments.next() {
                         context.backup_suffix = suffix;
+                    }
+                }
+                "--suffix" => {
+                    context.backup_suffix = match split.next() {
+                        Some("") | None => "~".to_string(),
+                        Some(suffix) => suffix.to_string(),
                     }
                 }
                 _ => (),
@@ -362,16 +368,48 @@ mod winstall {
                     }),
                 },
                 TestCase {
-                    args: vec![],
-                    config_suffix: Some("abc"),
+                    args: vec!["-S", "abc"],
+                    config_suffix: Some("def"),
                     expected: Ok(Options {
                         backup_suffix: "abc".to_string(),
                         ..Default::default()
                     }),
                 },
                 TestCase {
-                    args: vec!["-S", "abc"],
+                    args: vec!["--suffix=abc"],
+                    config_suffix: None,
+                    expected: Ok(Options {
+                        backup_suffix: "abc".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec!["--suffix=abc"],
                     config_suffix: Some("def"),
+                    expected: Ok(Options {
+                        backup_suffix: "abc".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec!["--suffix=abc"],
+                    config_suffix: Some("def"),
+                    expected: Ok(Options {
+                        backup_suffix: "abc".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec!["--suffix="],
+                    config_suffix: Some("def"),
+                    expected: Ok(Options {
+                        backup_suffix: "~".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec![],
+                    config_suffix: Some("abc"),
                     expected: Ok(Options {
                         backup_suffix: "abc".to_string(),
                         ..Default::default()
@@ -389,13 +427,13 @@ mod winstall {
 
             for test in tests {
                 let config = Config {
-                    backup_suffix: test.config_suffix.and_then(|x| Some(x.to_string())),
+                    backup_suffix: test.config_suffix.map(|x| x.to_string()),
                     ..Default::default()
                 };
 
                 let arguments = test.args.iter().map(|x| x.to_string());
                 let outcome = get_options(arguments, config);
-                
+
                 assert_eq!(
                     test.expected, outcome,
                     "args: {:?}; config_suffix: {:?}",

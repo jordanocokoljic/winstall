@@ -45,7 +45,7 @@ pub struct Config {
 pub fn get_options<A: IntoIterator<Item = String>>(
     args: A,
     config: Config,
-) -> Result<Options, Error> {
+) -> Result<(Vec<String>, Options), Error> {
     fn determine_backup_type(indicator: &str, source: &str) -> Result<Backup, Error> {
         match indicator {
             "none" | "off" => Ok(Backup::None),
@@ -56,14 +56,14 @@ pub fn get_options<A: IntoIterator<Item = String>>(
         }
     }
 
-    let mut arguments = args.into_iter();
+    let mut arguments = args.into_iter().peekable();
     let mut context = Options::default();
 
     if let Some(suffix) = config.backup_suffix {
         context.backup_suffix = suffix;
     }
 
-    while let Some(arg) = arguments.next() {
+    while let Some(arg) = arguments.peek() {
         let mut split = arg.split("=");
         let opt_or_arg = split.next().unwrap();
 
@@ -93,8 +93,10 @@ pub fn get_options<A: IntoIterator<Item = String>>(
                 }
             }
             "-S" => {
-                if let Some(suffix) = arguments.next() {
-                    context.backup_suffix = suffix;
+                arguments.next();
+
+                if let Some(suffix) = arguments.peek() {
+                    context.backup_suffix = suffix.to_string();
                 }
             }
             "--suffix" => {
@@ -104,8 +106,10 @@ pub fn get_options<A: IntoIterator<Item = String>>(
                 }
             }
             "-t" => {
-                if let Some(target) = arguments.next() {
-                    context.target_directory = Some(target);
+                arguments.next();
+
+                if let Some(target) = arguments.peek() {
+                    context.target_directory = Some(target.to_string());
                 }
             }
             "--target-directory" => {
@@ -113,11 +117,13 @@ pub fn get_options<A: IntoIterator<Item = String>>(
                     context.target_directory = Some(target.to_string());
                 }
             }
-            _ => (),
+            _ => break,
         }
+
+        arguments.next();
     }
 
-    Ok(context)
+    Ok((arguments.collect(), context))
 }
 
 #[cfg(test)]
@@ -203,7 +209,7 @@ mod tests {
         for test in tests {
             let config = Config::default();
             let args = test.args.iter().map(|arg| arg.to_string());
-            let outcome = get_options(args, config).unwrap();
+            let (_, outcome) = get_options(args, config).unwrap();
             assert_eq!(test.expected, outcome, "args: {:?}", test.args);
         }
     }
@@ -327,7 +333,8 @@ mod tests {
                     version_control: test.config_value.clone(),
                     ..Default::default()
                 },
-            );
+            )
+            .and_then(|(_, o)| Ok(o));
 
             assert_eq!(
                 test.expected, outcome,
@@ -419,7 +426,7 @@ mod tests {
             };
 
             let arguments = test.args.iter().map(|x| x.to_string());
-            let outcome = get_options(arguments, config);
+            let outcome = get_options(arguments, config).and_then(|(_, o)| Ok(o));
 
             assert_eq!(
                 test.expected, outcome,
@@ -470,9 +477,52 @@ mod tests {
         for test in tests {
             let config = Config::default();
             let arguments = test.args.iter().map(|x| x.to_string());
-            let outcome = get_options(arguments, config);
+            let outcome = get_options(arguments, config).and_then(|(_, o)| Ok(o));
 
             assert_eq!(test.expected, outcome, "args: {:?}", test.args)
+        }
+    }
+
+    #[test]
+    fn test_get_options_returns_unparsed_arguments() {
+        struct TestCase<'a> {
+            args: Vec<&'a str>,
+            expected: Vec<&'a str>,
+        }
+
+        let tests = vec![
+            TestCase {
+                args: vec![
+                    "--backup=existing",
+                    "-D",
+                    "abc.txt",
+                    "def.txt",
+                    "install/to",
+                ],
+                expected: vec!["abc.txt", "def.txt", "install/to"],
+            },
+            TestCase {
+                args: vec!["-S", ".pre-install", "abc.txt", "move-to"],
+                expected: vec!["abc.txt", "move-to"],
+            },
+            TestCase {
+                args: vec!["-S", ".pre-install", "abc.txt", "-D", "move-to"],
+                expected: vec!["abc.txt", "-D", "move-to"],
+            },
+        ];
+
+        for test in tests {
+            let config = Config::default();
+            let arguments = test.args.iter().map(|x| x.to_string());
+            let outcome = get_options(arguments, config).and_then(|(rest, _)| Ok(rest));
+
+            let expected = Ok(test
+                .expected
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>());
+
+            assert_eq!(expected, outcome, "args: {:?}", test.args);
         }
     }
 }

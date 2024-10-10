@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_get_options_backup() {
-        const BACKUP_SETTINGS: &[(&'static str, Backup)] = &[
+        const BACKUP_SETTINGS: &[(&str, Backup)] = &[
             ("none", Backup::None),
             ("off", Backup::None),
             ("simple", Backup::Simple),
@@ -347,7 +347,7 @@ mod tests {
                     ..Default::default()
                 },
             )
-            .and_then(|(_, o)| Ok(o));
+            .map(|(_, o)| o);
 
             assert_eq!(
                 test.expected, outcome,
@@ -439,7 +439,7 @@ mod tests {
             };
 
             let arguments = test.args.iter().map(|x| x.to_string());
-            let outcome = get_options(arguments, config).and_then(|(_, o)| Ok(o));
+            let outcome = get_options(arguments, config).map(|(_, o)| o);
 
             assert_eq!(
                 test.expected, outcome,
@@ -490,7 +490,7 @@ mod tests {
         for test in tests {
             let config = Config::default();
             let arguments = test.args.iter().map(|x| x.to_string());
-            let outcome = get_options(arguments, config).and_then(|(_, o)| Ok(o));
+            let outcome = get_options(arguments, config).map(|(_, o)| o);
 
             assert_eq!(test.expected, outcome, "args: {:?}", test.args)
         }
@@ -527,7 +527,7 @@ mod tests {
         for test in tests {
             let config = Config::default();
             let arguments = test.args.iter().map(|x| x.to_string());
-            let outcome = get_options(arguments, config).and_then(|(rest, _)| Ok(rest));
+            let outcome = get_options(arguments, config).map(|(rest, _)| rest);
 
             let expected = Ok(test
                 .expected

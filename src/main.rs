@@ -70,7 +70,7 @@ mod winstall {
                 "simple" | "never" => Ok(Backup::Simple),
                 "existing" | "nil" | "" => Ok(Backup::Existing),
                 "numbered" | "t" => Ok(Backup::Numbered),
-                var => return Err(Error::InvalidArgument(var.to_string(), source.to_string())),
+                var => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
             }
         }
 
@@ -95,7 +95,7 @@ mod winstall {
                 "--backup" => {
                     context.backup_type = {
                         if let Some(specified) = split.next() {
-                            determine_backup_type(&specified, "backup type")?
+                            determine_backup_type(specified, "backup type")?
                         } else if let Some(vc) = &config.version_control {
                             determine_backup_type(vc, "$VERSION_CONTROL")?
                         } else {
@@ -260,7 +260,7 @@ mod winstall {
                     argument: "-b".to_string(),
                     config_value: Some(config.to_string()),
                     expected: Ok(Options {
-                        backup_type: backup.clone(),
+                        backup_type: *backup,
                         ..Default::default()
                     }),
                 });
@@ -269,7 +269,7 @@ mod winstall {
                     argument: "--backup".to_string(),
                     config_value: Some(config.to_string()),
                     expected: Ok(Options {
-                        backup_type: backup.clone(),
+                        backup_type: *backup,
                         ..Default::default()
                     }),
                 });
@@ -278,7 +278,7 @@ mod winstall {
                     argument: format!("--backup={}", config),
                     config_value: None,
                     expected: Ok(Options {
-                        backup_type: backup.clone(),
+                        backup_type: *backup,
                         ..Default::default()
                     }),
                 });
@@ -297,7 +297,7 @@ mod winstall {
                         argument: format!("--backup={}", config),
                         config_value: Some(nested_config.to_string()),
                         expected: Ok(Options {
-                            backup_type: backup.clone(),
+                            backup_type: *backup,
                             ..Default::default()
                         }),
                     });
@@ -306,7 +306,7 @@ mod winstall {
                         argument: format!("--backup={}", config),
                         config_value: Some("bad value".to_string()),
                         expected: Ok(Options {
-                            backup_type: backup.clone(),
+                            backup_type: *backup,
                             ..Default::default()
                         }),
                     });

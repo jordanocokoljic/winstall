@@ -1,31 +1,41 @@
 use std::env;
 
 fn main() {
-    let config = winstall::Config {
-        version_control: None,
-    };
-
+    let config = winstall::Config::default();
     let context = winstall::get_options(env::args().skip(1), config);
     println!("{context:?}");
 }
 
 mod winstall {
-    #[derive(PartialEq, Clone, Copy, Debug, Default)]
+    #[derive(PartialEq, Clone, Copy, Debug)]
     pub enum Backup {
-        #[default]
         None,
         Numbered,
         Existing,
         Simple,
     }
 
-    #[derive(PartialEq, Debug, Default)]
+    #[derive(PartialEq, Debug)]
     pub struct Options {
         verbose: bool,
         create_parents: bool,
         directory_args: bool,
         preserve_timestamps: bool,
         backup_type: Backup,
+        backup_suffix: String,
+    }
+
+    impl Default for Options {
+        fn default() -> Self {
+            Self {
+                verbose: false,
+                create_parents: false,
+                directory_args: false,
+                preserve_timestamps: false,
+                backup_type: Backup::None,
+                backup_suffix: "~".to_string(),
+            }
+        }
     }
 
     #[derive(PartialEq, Debug)]
@@ -36,6 +46,7 @@ mod winstall {
     #[derive(Clone, Debug, Default)]
     pub struct Config {
         pub version_control: Option<String>,
+        pub backup_suffix: Option<String>,
     }
 
     pub fn get_options<A: IntoIterator<Item = String>>(
@@ -52,7 +63,7 @@ mod winstall {
             [x] -v, --verbose
             [ ] -t, --target-directory=DIRECTORY
             [x] -D
-            [ ] -S, --suffix=SUFFIX
+            [-] -S, --suffix=SUFFIX
 
         Items marked with a * are halting options - the standard execution
         is prevented, and an alternate action takes place - so they're not
@@ -71,6 +82,10 @@ mod winstall {
 
         let mut arguments = args.into_iter();
         let mut context = Options::default();
+
+        if let Some(suffix) = config.backup_suffix {
+            context.backup_suffix = suffix;
+        }
 
         while let Some(arg) = arguments.next() {
             let mut split = arg.split("=");
@@ -101,6 +116,11 @@ mod winstall {
                         }
                     }
                 }
+                "-S" => {
+                    if let Some(suffix) = arguments.next() {
+                        context.backup_suffix = suffix;
+                    }
+                }
                 _ => (),
             }
         }
@@ -122,6 +142,7 @@ mod winstall {
                     directory_args: false,
                     preserve_timestamps: false,
                     backup_type: Backup::None,
+                    backup_suffix: "~".to_string(),
                 },
                 options,
             );
@@ -187,10 +208,7 @@ mod winstall {
             ];
 
             for test in tests {
-                let config = Config {
-                    version_control: None,
-                };
-
+                let config = Config::default();
                 let args = test.args.iter().map(|arg| arg.to_string());
                 let outcome = get_options(args, config).unwrap();
                 assert_eq!(test.expected, outcome, "args: {:?}", test.args);
@@ -322,6 +340,66 @@ mod winstall {
                     test.expected, outcome,
                     "arg: {:?}; config: {:?}",
                     test.argument, test.config_value
+                );
+            }
+        }
+
+        #[test]
+        fn test_get_options_suffix() {
+            struct TestCase<'a> {
+                args: Vec<&'a str>,
+                config_suffix: Option<&'a str>,
+                expected: Result<Options, Error>,
+            }
+
+            let tests = vec![
+                TestCase {
+                    args: vec!["-S", "abc"],
+                    config_suffix: None,
+                    expected: Ok(Options {
+                        backup_suffix: "abc".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec![],
+                    config_suffix: Some("abc"),
+                    expected: Ok(Options {
+                        backup_suffix: "abc".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec!["-S", "abc"],
+                    config_suffix: Some("def"),
+                    expected: Ok(Options {
+                        backup_suffix: "abc".to_string(),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec![],
+                    config_suffix: None,
+                    expected: Ok(Options {
+                        backup_suffix: "~".to_string(),
+                        ..Default::default()
+                    }),
+                },
+            ];
+
+            for test in tests {
+                let config = Config {
+                    backup_suffix: test.config_suffix.and_then(|x| Some(x.to_string())),
+                    ..Default::default()
+                };
+
+                let arguments = test.args.iter().map(|x| x.to_string());
+                let outcome = get_options(arguments, config);
+                
+                assert_eq!(
+                    test.expected, outcome,
+                    "args: {:?}; config_suffix: {:?}",
+                    test.args, test.config_suffix
                 );
             }
         }

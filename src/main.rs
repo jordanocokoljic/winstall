@@ -4,7 +4,8 @@ fn main() {
     let config = winstall::Config {
         version_control: None,
     };
-    let context = winstall::get_options(env::args().skip(1), &config);
+
+    let context = winstall::get_options(env::args().skip(1), config);
     println!("{context:?}");
 }
 
@@ -39,7 +40,7 @@ mod winstall {
 
     pub fn get_options<A: Iterator<Item = String>>(
         args: A,
-        config: &Config,
+        config: Config,
     ) -> Result<Options, Error> {
         let collected = args.collect::<Vec<_>>();
         let index_at_end = |index: usize| index < collected.len();
@@ -190,13 +191,13 @@ mod winstall {
                 },
             ];
 
-            let config = Config {
-                version_control: None,
-            };
-
             for test in tests {
+                let config = Config {
+                    version_control: None,
+                };
+
                 let args = test.args.iter().map(|arg| arg.to_string());
-                let outcome = get_options(args, &config).unwrap();
+                let outcome = get_options(args, config).unwrap();
                 assert_eq!(test.expected, outcome, "args: {:?}", test.args);
             }
         }
@@ -316,7 +317,7 @@ mod winstall {
             for test in tests {
                 let outcome = get_options(
                     vec![test.argument.clone()].into_iter(),
-                    &Config {
+                    Config {
                         version_control: test.config_value.clone(),
                         ..Default::default()
                     },

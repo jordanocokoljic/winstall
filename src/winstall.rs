@@ -41,14 +41,14 @@ pub enum Error {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Config {
     version_control: Option<String>,
-    backup_suffix: Option<String>,
+    simple_backup_suffix: Option<String>,
 }
 
 impl Config {
     pub fn from_env() -> Self {
         Self {
             version_control: env::var("VERSION_CONTROL").ok(),
-            backup_suffix: env::var("SIMPLE_BACKUP_SUFFIX").ok(),
+            simple_backup_suffix: env::var("SIMPLE_BACKUP_SUFFIX").ok(),
         }
     }
 }
@@ -70,7 +70,7 @@ pub fn get_options<A: IntoIterator<Item = String>>(
     let mut arguments = args.into_iter().peekable();
     let mut context = Options::default();
 
-    if let Some(suffix) = config.backup_suffix {
+    if let Some(suffix) = config.simple_backup_suffix {
         context.backup_suffix = suffix;
     }
 
@@ -434,7 +434,7 @@ mod tests {
 
         for test in tests {
             let config = Config {
-                backup_suffix: test.config_suffix.map(|x| x.to_string()),
+                simple_backup_suffix: test.config_suffix.map(|x| x.to_string()),
                 ..Default::default()
             };
 
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(
             Config {
                 version_control: None,
-                backup_suffix: None,
+                simple_backup_suffix: None,
             },
             Config::from_env()
         );
@@ -558,7 +558,7 @@ mod tests {
         assert_eq!(
             Config {
                 version_control: Some("first".to_string()),
-                backup_suffix: Some("second".to_string()),
+                simple_backup_suffix: Some("second".to_string()),
             },
             Config::from_env(),
         )

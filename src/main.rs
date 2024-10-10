@@ -63,7 +63,7 @@ mod winstall {
             [x] -p, --preserve-timestamps
             [x] -d, --directory
             [x] -v, --verbose
-            [ ] -t, --target-directory=DIRECTORY
+            [x] -t, --target-directory=DIRECTORY
             [x] -D
             [x] -S, --suffix=SUFFIX
 
@@ -133,7 +133,12 @@ mod winstall {
                     if let Some(target) = arguments.next() {
                         context.target_directory = Some(target);
                     }
-                }
+                },
+                "--target-directory" => {
+                    if let Some(target) = split.next() {
+                        context.target_directory = Some(target.to_string());
+                    }
+                },
                 _ => (),
             }
         }
@@ -462,6 +467,20 @@ mod winstall {
                     args: vec!["-t", "target_dir"],
                     expected: Ok(Options {
                         target_directory: Some("target_dir".to_string()),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec!["--target-directory=target_dir"],
+                    expected: Ok(Options {
+                        target_directory: Some("target_dir".to_string()),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec!["--target-directory="],
+                    expected: Ok(Options {
+                        target_directory: Some("".to_string()),
                         ..Default::default()
                     }),
                 },

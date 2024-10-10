@@ -38,13 +38,10 @@ mod winstall {
         pub version_control: Option<String>,
     }
 
-    pub fn get_options<A: Iterator<Item = String>>(
+    pub fn get_options<A: IntoIterator<Item = String>>(
         args: A,
         config: Config,
     ) -> Result<Options, Error> {
-        let collected = args.collect::<Vec<_>>();
-        let index_at_end = |index: usize| index < collected.len();
-
         /*
         The options that are supported from `install` are:
             [ ] --help*
@@ -62,9 +59,6 @@ mod winstall {
         context items but some sort of "Action".
         */
 
-        let mut idx = 0;
-        let mut context = Options::default();
-
         fn determine_backup_type(indicator: &str, source: &str) -> Result<Backup, Error> {
             match indicator {
                 "none" | "off" => Ok(Backup::None),
@@ -75,8 +69,11 @@ mod winstall {
             }
         }
 
-        while index_at_end(idx) {
-            let mut split = collected[idx].split("=");
+        let mut arguments = args.into_iter();
+        let mut context = Options::default();
+
+        while let Some(arg) = arguments.next() {
+            let mut split = arg.split("=");
             let opt_or_arg = split.next().unwrap();
 
             match opt_or_arg {
@@ -106,8 +103,6 @@ mod winstall {
                 }
                 _ => (),
             }
-
-            idx += 1;
         }
 
         Ok(context)

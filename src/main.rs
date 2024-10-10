@@ -23,6 +23,7 @@ mod winstall {
         preserve_timestamps: bool,
         backup_type: Backup,
         backup_suffix: String,
+        target_directory: Option<String>,
     }
 
     impl Default for Options {
@@ -34,6 +35,7 @@ mod winstall {
                 preserve_timestamps: false,
                 backup_type: Backup::None,
                 backup_suffix: "~".to_string(),
+                target_directory: None,
             }
         }
     }
@@ -126,6 +128,11 @@ mod winstall {
                         Some("") | None => "~".to_string(),
                         Some(suffix) => suffix.to_string(),
                     }
+                },
+                "-t" => {
+                    if let Some(target) = arguments.next() {
+                        context.target_directory = Some(target);
+                    }
                 }
                 _ => (),
             }
@@ -149,6 +156,7 @@ mod winstall {
                     preserve_timestamps: false,
                     backup_type: Backup::None,
                     backup_suffix: "~".to_string(),
+                    target_directory: None,
                 },
                 options,
             );
@@ -439,6 +447,39 @@ mod winstall {
                     "args: {:?}; config_suffix: {:?}",
                     test.args, test.config_suffix
                 );
+            }
+        }
+
+        #[test]
+        fn test_get_options_target_directory() {
+            struct TestCase<'a> {
+                args: Vec<&'a str>,
+                expected: Result<Options, Error>,
+            }
+
+            let tests = vec![
+                TestCase {
+                    args: vec!["-t", "target_dir"],
+                    expected: Ok(Options {
+                        target_directory: Some("target_dir".to_string()),
+                        ..Default::default()
+                    }),
+                },
+                TestCase {
+                    args: vec![],
+                    expected: Ok(Options {
+                        target_directory: None,
+                        ..Default::default()
+                    }),
+                },
+            ];
+
+            for test in tests {
+                let config = Config::default();
+                let arguments = test.args.iter().map(|x| x.to_string());
+                let outcome = get_options(arguments, config);
+
+                assert_eq!(test.expected, outcome, "args: {:?}", test.args)
             }
         }
     }

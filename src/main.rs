@@ -1,9 +1,8 @@
-mod winstall;
-
 use std::env;
 
-fn main() {
-    let config = winstall::Config::from_env();
-    let context = winstall::get_options(env::args().skip(1), config);
-    println!("{context:?}");
+mod winstall;
+
+fn main() -> Result<(), winstall::Error> {
+    winstall::install(env::args().skip(1))?;
+    Ok(())
 }

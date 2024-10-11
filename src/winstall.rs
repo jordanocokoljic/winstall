@@ -1,7 +1,21 @@
 use std::env;
 
+#[derive(PartialEq, Debug)]
+pub enum Error {
+    InvalidArgument(String, String),
+}
+
+pub fn install<A: IntoIterator<Item = String>>(args: A) -> Result<(), Error> {
+    let config = Config::from_env();
+    let (rest, options) = get_options(args, config)?;
+
+    // Perform the specified action here.
+
+    Ok(())
+}
+
 #[derive(PartialEq, Clone, Copy, Debug)]
-pub enum Backup {
+enum Backup {
     None,
     Numbered,
     Existing,
@@ -9,7 +23,7 @@ pub enum Backup {
 }
 
 #[derive(PartialEq, Debug)]
-pub struct Options {
+struct Options {
     verbose: bool,
     create_parents: bool,
     directory_args: bool,
@@ -33,19 +47,14 @@ impl Default for Options {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub enum Error {
-    InvalidArgument(String, String),
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Config {
+struct Config {
     version_control: Option<String>,
     simple_backup_suffix: Option<String>,
 }
 
 impl Config {
-    pub fn from_env() -> Self {
+    fn from_env() -> Self {
         Self {
             version_control: env::var("VERSION_CONTROL").ok(),
             simple_backup_suffix: env::var("SIMPLE_BACKUP_SUFFIX").ok(),
@@ -53,7 +62,7 @@ impl Config {
     }
 }
 
-pub fn get_options<A: IntoIterator<Item = String>>(
+fn get_options<A: IntoIterator<Item = String>>(
     args: A,
     config: Config,
 ) -> Result<(Vec<String>, Options), Error> {

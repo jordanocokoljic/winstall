@@ -134,6 +134,11 @@ fn get_options<A: IntoIterator<Item = String>>(
                     context.target_directory = Some(target.to_string());
                 }
             }
+            "-g" | "-m" | "-o" => {
+                arguments.next();
+            }
+            "-C" | "--compare" | "-c" | "--debug" | "--preserve-context" | "--group" | "--mode"
+            | "--owner" | "-s" | "--strip" | "--strip-program" => (),
             _ => break,
         }
 
@@ -542,6 +547,37 @@ mod tests {
                 .collect::<Vec<_>>());
 
             assert_eq!(expected, outcome, "args: {:?}", test.args);
+        }
+    }
+
+    #[test]
+    fn test_get_options_parses_but_ignores_unix_specifics() {
+        let tests = vec![
+            vec!["-C", "--compare"],
+            vec!["-c"],
+            vec!["--debug"],
+            vec!["-g", "wheel", "--group=wheel"],
+            vec!["-m", "744", "--mode=744"],
+            vec!["-o", "auser", "--owner=auser"],
+            vec!["--preserve-context"],
+            vec!["-s", "--strip"],
+            vec!["--strip-program=program"],
+        ];
+
+        let expected = Ok(vec!["file.txt".to_string(), "install_dir".to_string()]);
+        let statics = vec!["file.txt".to_string(), "install_dir".to_string()];
+
+        for test_args in tests {
+            let config = Config::default();
+            let arguments = test_args
+                .iter()
+                .map(|x| x.to_string())
+                .chain(statics.clone())
+                .collect::<Vec<_>>();
+
+            let outcome = get_options(arguments.clone(), config).map(|(rest, _)| rest);
+
+            assert_eq!(expected, outcome, "args: {:?}", arguments);
         }
     }
 

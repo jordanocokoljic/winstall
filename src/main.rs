@@ -155,7 +155,7 @@ mod tests {
     use super::{get_options, Backup, Config, Error, Options};
 
     #[test]
-    pub fn test_options_default() {
+    fn test_options_default() {
         let options = Options::default();
         assert_eq!(
             Options {
@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_get_options_simple() {
+    fn test_get_options_simple() {
         struct TestCase<'a> {
             args: Vec<&'a str>,
             expected: Options,

@@ -3,12 +3,32 @@ use std::env;
 fn main() -> Result<(), Error> {
     let config = Config::from_env();
     let (rest, options) = get_options(env::args().skip(1), config)?;
+    let action = decide_action(rest);
     Ok(())
 }
 
 #[derive(PartialEq, Debug)]
 enum Error {
     InvalidArgument(String, String),
+}
+
+#[derive(PartialEq, Debug)]
+enum Action {
+    Help,
+    Version,
+    Install(Vec<String>),
+}
+
+fn decide_action(remainder: Vec<String>) -> Action {
+    let args_iterator = remainder.into_iter();
+
+    match args_iterator.clone().peekable().peek().map(|x| x.as_str()) {
+        Some("--help") => return Action::Help,
+        Some("--version") => return Action::Version,
+        Some(_) | None => (),
+    };
+
+    Action::Install(args_iterator.collect())
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -152,7 +172,27 @@ fn get_options<A: IntoIterator<Item = String>>(
 mod tests {
     use std::env;
 
-    use super::{get_options, Backup, Config, Error, Options};
+    use super::{decide_action, get_options, Action, Backup, Config, Error, Options};
+
+    #[test]
+    fn test_get_action() {
+        let tests = vec![
+            (vec!["--help"], Action::Help),
+            (vec!["--version"], Action::Version),
+            (
+                vec!["file.txt", "move_to"],
+                Action::Install(vec!["file.txt".to_string(), "move_to".to_string()]),
+            ),
+        ];
+
+        for (args, expected) in tests {
+            let arguments = args.into_iter().map(|x| x.to_string());
+            let (rest, _) = get_options(arguments, Config::default()).unwrap();
+            let action = decide_action(rest);
+
+            assert_eq!(expected, action);
+        }
+    }
 
     #[test]
     fn test_options_default() {

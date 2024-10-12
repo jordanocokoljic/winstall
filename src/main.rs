@@ -69,6 +69,7 @@ struct Options {
     backup_type: Backup,
     backup_suffix: String,
     target_directory: Option<String>,
+    no_target_directory: bool,
 }
 
 impl Default for Options {
@@ -81,6 +82,7 @@ impl Default for Options {
             backup_type: Backup::None,
             backup_suffix: "~".to_string(),
             target_directory: None,
+            no_target_directory: false,
         }
     }
 }
@@ -130,6 +132,7 @@ fn get_options<A: IntoIterator<Item = String>>(
             "-D" => context.create_parents = true,
             "-d" | "--directory" => context.directory_args = true,
             "-p" | "--preserve-timestamps" => context.preserve_timestamps = true,
+            "-T" | "--no-target-directory" => context.no_target_directory = true,
             "-b" => {
                 context.backup_type = {
                     if let Some(vc) = &config.version_control {
@@ -246,6 +249,7 @@ mod tests {
                 backup_type: Backup::None,
                 backup_suffix: "~".to_string(),
                 target_directory: None,
+                no_target_directory: false,
             },
             options,
         );
@@ -305,6 +309,20 @@ mod tests {
                 args: vec!["-p"],
                 expected: Options {
                     preserve_timestamps: true,
+                    ..Default::default()
+                },
+            },
+            TestCase {
+                args: vec!["-T"],
+                expected: Options {
+                    no_target_directory: true,
+                    ..Default::default()
+                },
+            },
+            TestCase {
+                args: vec!["--no-target-directory"],
+                expected: Options {
+                    no_target_directory: true,
                     ..Default::default()
                 },
             },

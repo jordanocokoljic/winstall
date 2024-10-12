@@ -1,0 +1,72 @@
+Usage: winstall [OPTION]... [-T] SOURCE DEST
+  or:  winstall [OPTION]... SOURCE... DIRECTORY
+  or:  winstall [OPTION]... -t DIRECTORY SOURCE...
+  or:  winstall [OPTION]... -d DIRECTORY...
+
+winstall is an almost drop in replacement for the GNU coreutils install program
+for Windows. It should behave identically, excepting the handling for Linux
+specifics, such as handling for SELinux contexts and Unix file permissions.
+
+In the first three forms winstall will behave as install does, copy SOURCE to
+DEST or multiple SOURCE(s) to the pre-existing DIRECTORY. In the 4th form
+winstall will create all components of the given DIRECTORY(ies).
+
+If an argument is parsed but ignored for compatibility with the original
+install program this will be indicated. Mandatory arguments to long options are
+mandatory for short options too.
+
+  --backup[=CONTROL]            Make a backup of each file that would be
+                                  overwritten or removed. If no CONTROL is
+                                  provided, it will be read from the
+                                  VERSION_CONTROL environment variable, if that
+                                  is unset, "existing" will be used as default.
+
+                                  The accepted values are:
+                                  'none', 'off'     Never make backups.
+                                  'numbered', 't'   Always make numbered
+                                                      backups.
+                                  'existing', 'nil' Make numbered backups of of
+                                                      files that already have
+                                                      them, simple backups of
+                                                      the others.
+                                  'simple', 'never' Always make simple backups.
+                                                      Do not confuse 'never'
+                                                      with 'none'.
+  -b                            Like --backup but does not accept an argument.
+  -c                            (ignored; unix compatibility)
+  -C, --compare                 (ignored; unix compatibility)
+  -D                            Create any missing parent directories for DEST
+                                  or all the components of --target-directory
+                                  then copy SOURCE to DEST.
+  -d, --directory               Treat all arguments as directories, creating
+                                  all components of the specified directories.
+  --debug                       (ignored; unix compatibility)
+  -g, --group=GROUP             (ignored; unix compatibility)
+  -m, --mode=MODE               (ignored; unix compatibility)
+  -o, --owner=OWNER             (ignored; unix compatibility)
+  --preserve-context            (ignored; unix compatibility)
+  -p, --preserve-timestamps     Set the time of last access and modificaiton of
+                                  each copied file to match the original. If
+                                  this is not used, then the copied files will
+                                  have their last access and modification time
+                                  set to the time of installation.
+  -s, --strip                   (ignored; unix compatibility)
+  --strip-program=PROGRAM       (ignored; unix compatibility)
+  -S, --suffix=SUFFIX           Append SUFFIX to each backup file made with -b.
+                                  If this is option is not specified, the value
+                                  of the SIMPLE_BACKUP_SUFFIX environment
+                                  variable will be used. If that is not set
+                                  then the default is '~'.
+  -t, --target-directory=DIR    Specify the destination directory, this means
+                                  that arguments will be interpreted instead as
+                                  files to be copied (rather than the last
+                                  argument being the directory to copy to).
+  -T, --no-target-directory     Do not treat the last argument as a directory
+                                  treat it as a normal file.
+  -v, --verbose                 Print the name of each file before copying it
+  -Z, --context[=CONTEXT]       (ignored; unix compatibility)
+  --help                        Display this help and exit.
+  --version                     Output version information and exit.
+
+For more detailed information visit the full documentation for the GNU
+coreutils install program <https://www.gnu.org/software/coretuils/install>.

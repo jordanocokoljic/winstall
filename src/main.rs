@@ -1,15 +1,36 @@
-use std::env;
+use std::{
+    env,
+    io::{self},
+};
 
 fn main() -> Result<(), Error> {
     let config = Config::from_env();
     let (rest, options) = get_options(env::args().skip(1), config)?;
     let action = decide_action(rest);
-    Ok(())
+
+    install(action, options, (&mut io::stdout(), &mut io::stderr()))
 }
 
 #[derive(PartialEq, Debug)]
 enum Error {
     InvalidArgument(String, String),
+}
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const USAGE: &str = include_str!("usage.txt");
+
+fn install(
+    action: Action,
+    _: Options,
+    (out, _): (&mut dyn io::Write, &mut dyn io::Write),
+) -> Result<(), Error> {
+    match action {
+        Action::Version => _ = write!(out, "winstall version {}", VERSION),
+        Action::Help => _ = write!(out, "{}", USAGE),
+        _ => (),
+    }
+
+    Ok(())
 }
 
 #[derive(PartialEq, Debug)]
@@ -172,7 +193,26 @@ fn get_options<A: IntoIterator<Item = String>>(
 mod tests {
     use std::env;
 
-    use super::{decide_action, get_options, Action, Backup, Config, Error, Options};
+    use super::{
+        decide_action, get_options, install, Action, Backup, Config, Error, Options, USAGE,
+    };
+
+    #[test]
+    fn test_install_alternate_actions() {
+        let alternates = vec![
+            (Action::Help, USAGE),
+            (Action::Version, "winstall version 0.1.0"),
+        ];
+
+        for (action, output) in alternates {
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+
+            _ = install(action, Options::default(), (&mut stdout, &mut stderr));
+
+            assert_eq!(String::from_utf8(stdout).unwrap(), output.to_string());
+        }
+    }
 
     #[test]
     fn test_get_action() {

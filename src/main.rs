@@ -16,7 +16,7 @@ enum Error {
     InvalidArgument(String, String),
 }
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = include_str!("version.txt");
 const USAGE: &str = include_str!("usage.txt");
 
 fn install(
@@ -25,8 +25,8 @@ fn install(
     (out, _): (&mut dyn io::Write, &mut dyn io::Write),
 ) -> Result<(), Error> {
     match action {
-        Action::Version => _ = write!(out, "winstall version {}", VERSION),
-        Action::Help => _ = write!(out, "{}", USAGE),
+        Action::Version => write!(out, "{}", VERSION).expect("unable to write version"),
+        Action::Help => write!(out, "{}", USAGE).expect("unable to write help"),
         _ => (),
     }
 
@@ -197,24 +197,30 @@ mod tests {
     use std::env;
 
     use super::{
-        decide_action, get_options, install, Action, Backup, Config, Error, Options, USAGE,
+        decide_action, get_options, install, Action, Backup, Config, Error, Options, USAGE, VERSION,
     };
+
+    const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
     #[test]
     fn test_install_alternate_actions() {
-        let alternates = vec![
-            (Action::Help, USAGE),
-            (Action::Version, "winstall version 0.1.0"),
-        ];
+        let alternates = vec![(Action::Help, USAGE), (Action::Version, VERSION)];
 
         for (action, output) in alternates {
             let mut stdout = Vec::new();
             let mut stderr = Vec::new();
 
-            _ = install(action, Options::default(), (&mut stdout, &mut stderr));
+            install(action, Options::default(), (&mut stdout, &mut stderr))
+                .expect("unable to execute install");
 
             assert_eq!(String::from_utf8(stdout).unwrap(), output.to_string());
         }
+    }
+
+    #[test]
+    fn test_version_matches_cargo() {
+        let expected_prefix = format!("winstall {}", CARGO_PKG_VERSION);
+        assert!(VERSION.starts_with(&expected_prefix))
     }
 
     #[test]

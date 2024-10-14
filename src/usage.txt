@@ -25,7 +25,7 @@ mandatory for short options too.
                                   'none', 'off'     Never make backups.
                                   'numbered', 't'   Always make numbered
                                                       backups.
-                                  'existing', 'nil' Make numbered backups of of
+                                  'existing', 'nil' Make numbered backups of
                                                       files that already have
                                                       them, simple backups of
                                                       the others.

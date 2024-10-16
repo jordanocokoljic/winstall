@@ -1,24 +1,31 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub struct EphemeralPath<'a> {
-    path: &'a str,
+pub struct EphemeralPath {
+    path: PathBuf,
 }
 
-impl<'a> EphemeralPath<'a> {
-    pub fn new(path: &'a str) -> Self {
+impl EphemeralPath {
+    pub fn new(path: &str) -> Self {
         fs::create_dir(path).unwrap_or_else(|_| panic!("unable to create: {}", path));
-        Self { path }
+        Self {
+            path: PathBuf::from(path),
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        self.path.as_path()
     }
 
     pub fn join<P: AsRef<Path>>(&self, suffix: P) -> PathBuf {
-        Path::new(self.path).join(suffix)
+        self.path().join(suffix)
     }
 }
 
-impl<'a> Drop for EphemeralPath<'a> {
+impl Drop for EphemeralPath {
     fn drop(&mut self) {
-        fs::remove_dir_all(self.path).unwrap_or_else(|_| panic!("unable to delete: {}", self.path))
+        fs::remove_dir_all(self.path())
+            .unwrap_or_else(|_| panic!("unable to delete: {}", self.path().display()))
     }
 }
 

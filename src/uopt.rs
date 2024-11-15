@@ -3,12 +3,12 @@ pub enum Hint {
 }
 
 pub trait Visitor {
-    fn visit_argument(&self, argument: &str) -> Option<Hint>;
-    fn visit_flag(&self, option: &str) -> Option<Hint>;
-    fn visit_parameter(&self, name: &str, parameter: Option<&str>) -> Option<Hint>;
+    fn visit_argument(&mut self, argument: &str) -> Option<Hint>;
+    fn visit_flag(&mut self, option: &str) -> Option<Hint>;
+    fn visit_parameter(&mut self, name: &str, parameter: Option<&str>) -> Option<Hint>;
 }
 
-pub fn visit(arguments: impl Iterator<Item = String>, visitor: &impl Visitor) {
+pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor) {
     let mut take_options = true;
     let mut peekable = arguments.peekable();
 
@@ -97,9 +97,9 @@ mod tests {
     #[test]
     fn test_visit_handles_arguments() {
         let args = ["alpha", "beta", "gamma"].map(str::to_string);
-        let visitor = CollectingVisitor::new();
+        let mut visitor = CollectingVisitor::new();
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -114,9 +114,9 @@ mod tests {
     #[test]
     fn test_visit_handles_long_form_options() {
         let args = ["--action", "--0chance", "--config=value", "--take="].map(str::to_string);
-        let visitor = CollectingVisitor::new();
+        let mut visitor = CollectingVisitor::new();
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -132,9 +132,9 @@ mod tests {
     #[test]
     fn test_visit_handles_double_dash_indicator() {
         let args = ["--option", "--", "--not-option", "argument"].map(str::to_string);
-        let visitor = CollectingVisitor::new();
+        let mut visitor = CollectingVisitor::new();
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn test_visit_can_capture_subsequent_item_with_long_form() {
         let args = ["--config", "value", "--oops"].map(str::to_string);
-        let visitor = OverridableVisitor::new(
+        let mut visitor = OverridableVisitor::new(
             |flag: &str| -> Option<Hint> {
                 if flag == "config" || flag == "oops" {
                     Some(Hint::Capture)
@@ -161,7 +161,7 @@ mod tests {
             OverridableVisitor::ignore_parameter,
         );
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -175,9 +175,9 @@ mod tests {
     #[test]
     fn test_visit_handles_short_form_options() {
         let args = ["-a", "-bc", "-1"].map(str::to_string);
-        let visitor = CollectingVisitor::new();
+        let mut visitor = CollectingVisitor::new();
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_visit_can_capture_subsequent_item_with_short_form() {
         let args = ["-a", "value", "-b"].map(str::to_string);
-        let visitor = OverridableVisitor::new(
+        let mut visitor = OverridableVisitor::new(
             |flag: &str| -> Option<Hint> {
                 if flag == "a" || flag == "b" {
                     Some(Hint::Capture)
@@ -205,7 +205,7 @@ mod tests {
             OverridableVisitor::ignore_parameter,
         );
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn test_visit_can_capture_remainder_of_short_form_option_as_parameter() {
         let args = ["-avalue", "-b"].map(str::to_string);
-        let visitor = OverridableVisitor::new(
+        let mut visitor = OverridableVisitor::new(
             |flag: &str| -> Option<Hint> {
                 if flag == "a" {
                     Some(Hint::Capture)
@@ -231,7 +231,7 @@ mod tests {
             OverridableVisitor::ignore_parameter,
         );
 
-        visit(args.into_iter(), &visitor);
+        visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
@@ -241,7 +241,6 @@ mod tests {
 
     mod double {
         use crate::uopt::{Hint, Visitor};
-        use std::cell::RefCell;
         use std::fmt::{Debug, Formatter};
 
         #[derive(Debug)]
@@ -320,34 +319,34 @@ mod tests {
         }
 
         pub struct CollectingVisitor {
-            items: RefCell<ItemSet>,
+            items: ItemSet,
         }
 
         impl CollectingVisitor {
             pub fn new() -> Self {
                 CollectingVisitor {
-                    items: RefCell::new(ItemSet::new()),
+                    items: ItemSet::new(),
                 }
             }
 
             pub fn items(&self) -> ItemSet {
-                self.items.borrow().clone()
+                self.items.clone()
             }
         }
 
         impl Visitor for CollectingVisitor {
-            fn visit_argument(&self, argument: &str) -> Option<Hint> {
-                self.items.borrow_mut().push_argument(argument);
+            fn visit_argument(&mut self, argument: &str) -> Option<Hint> {
+                self.items.push_argument(argument);
                 None
             }
 
-            fn visit_flag(&self, option: &str) -> Option<Hint> {
-                self.items.borrow_mut().push_flag(option);
+            fn visit_flag(&mut self, option: &str) -> Option<Hint> {
+                self.items.push_flag(option);
                 None
             }
 
-            fn visit_parameter(&self, name: &str, value: Option<&str>) -> Option<Hint> {
-                self.items.borrow_mut().push_parameter(name, value);
+            fn visit_parameter(&mut self, name: &str, value: Option<&str>) -> Option<Hint> {
+                self.items.push_parameter(name, value);
                 None
             }
         }
@@ -389,7 +388,7 @@ mod tests {
         }
 
         impl Visitor for OverridableVisitor {
-            fn visit_argument(&self, argument: &str) -> Option<Hint> {
+            fn visit_argument(&mut self, argument: &str) -> Option<Hint> {
                 match (self.override_visit_argument)(argument) {
                     Some(hint) => return Some(hint),
                     None => (),
@@ -398,7 +397,7 @@ mod tests {
                 self.collecting_visitor.visit_argument(argument)
             }
 
-            fn visit_flag(&self, option: &str) -> Option<Hint> {
+            fn visit_flag(&mut self, option: &str) -> Option<Hint> {
                 match (self.override_visit_flag)(option) {
                     Some(hint) => return Some(hint),
                     None => (),
@@ -407,7 +406,7 @@ mod tests {
                 self.collecting_visitor.visit_flag(option)
             }
 
-            fn visit_parameter(&self, name: &str, parameter: Option<&str>) -> Option<Hint> {
+            fn visit_parameter(&mut self, name: &str, parameter: Option<&str>) -> Option<Hint> {
                 match (self.override_visit_parameter)(name, parameter) {
                     Some(hint) => return Some(hint),
                     None => (),

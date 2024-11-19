@@ -1,5 +1,6 @@
 pub enum Hint {
     Capture,
+    StopOptions
 }
 
 pub trait Visitor {
@@ -32,7 +33,7 @@ pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor
 
     while let Some(argument) = peekable.next() {
         match argument.as_str() {
-            "--" => {
+            "--" if take_options => {
                 take_options = false;
             }
             long if is_long(&argument) && take_options => 'long: {
@@ -131,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_visit_handles_double_dash_indicator() {
-        let args = ["--option", "--", "--not-option", "argument"].map(str::to_string);
+        let args = ["--option", "--", "--not-option", "argument", "--"].map(str::to_string);
         let mut visitor = CollectingVisitor::new();
 
         visit(args.into_iter(), &mut visitor);
@@ -142,6 +143,7 @@ mod tests {
                 Expect::Flag("option"),
                 Expect::Argument("--not-option"),
                 Expect::Argument("argument"),
+                Expect::Argument("--"),
             ]
         );
     }

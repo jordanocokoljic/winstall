@@ -1,6 +1,7 @@
 mod cli;
 mod ghost;
 mod operations;
+mod uopt;
 mod winstall;
 
 use crate::cli::{get_options, Config};

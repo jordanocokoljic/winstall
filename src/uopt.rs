@@ -1,6 +1,6 @@
 pub enum Hint {
     Capture,
-    StopOptions
+    StopOptions,
 }
 
 pub trait Visitor {
@@ -36,12 +36,16 @@ pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor
             "--" if take_options => {
                 take_options = false;
             }
-            long if is_long(&argument) && take_options => 'long: {
+            long if take_options && is_long(&argument) => 'long: {
                 let trimmed = &long[2..];
 
                 let mut split = trimmed.split("=");
                 if let (Some(name), Some(parameter)) = (split.next(), split.next()) {
-                    visitor.visit_parameter(name, Some(parameter));
+                    let hint = visitor.visit_parameter(name, Some(parameter));
+                    if let Some(Hint::StopOptions) = hint {
+                        take_options = false;
+                    }
+
                     break 'long;
                 }
 
@@ -49,15 +53,19 @@ pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor
                 if let Some(Hint::Capture) = hint {
                     let parameter = peekable.peek();
 
-                    match parameter {
+                    let parameter_hint = match parameter {
                         Some(param) => visitor.visit_parameter(trimmed, Some(param.as_str())),
                         None => visitor.visit_parameter(trimmed, None),
                     };
 
+                    if let Some(Hint::StopOptions) = parameter_hint {
+                        take_options = false;
+                    }
+
                     peekable.next();
                 }
             }
-            short if is_short(&argument) && take_options => 'short: {
+            short if take_options && is_short(&argument) => 'short: {
                 let trimmed = &short[1..];
                 let mut chars = trimmed.chars().enumerate().peekable();
 
@@ -66,27 +74,42 @@ pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor
                     let hint = visitor
                         .visit_flag(&trimmed[from..peek.map_or(trimmed.len(), |(to, _)| *to)]);
 
-                    if let Some(Hint::Capture) = hint {
-                        if let Some((to, _)) = peek {
-                            visitor.visit_parameter(&trimmed[from..*to], Some(&trimmed[*to..]));
-                            break 'short;
+                    match hint {
+                        Some(Hint::StopOptions) => {
+                            take_options = false;
                         }
+                        Some(Hint::Capture) => {
+                            if let Some((to, _)) = peek {
+                                visitor.visit_parameter(&trimmed[from..*to], Some(&trimmed[*to..]));
+                                break 'short;
+                            }
 
-                        let parameter = peekable.peek();
+                            let parameter = peekable.peek();
 
-                        match parameter {
-                            Some(param) => visitor.visit_parameter(trimmed, Some(param.as_str())),
-                            None => visitor.visit_parameter(trimmed, None),
-                        };
+                            let parameter_hint = match parameter {
+                                Some(param) => {
+                                    visitor.visit_parameter(trimmed, Some(param.as_str()))
+                                }
+                                None => visitor.visit_parameter(trimmed, None),
+                            };
 
-                        peekable.next();
+                            if let Some(Hint::StopOptions) = parameter_hint {
+                                take_options = false;
+                            }
+
+                            peekable.next();
+                        }
+                        None => (),
                     }
                 }
             }
-            _ => {
-                visitor.visit_argument(&argument[..]);
+            arg => {
+                let hint = visitor.visit_argument(arg);
+                if let Some(Hint::StopOptions) = hint {
+                    take_options = false;
+                }
             }
-        }
+        };
     }
 }
 
@@ -125,7 +148,7 @@ mod tests {
                 Expect::Flag("action"),
                 Expect::Argument("--0chance"),
                 Expect::Parameter("config", Some("value")),
-                Expect::Parameter("take", None),
+                Expect::Parameter("take", Some("")),
             ]
         );
     }
@@ -152,6 +175,7 @@ mod tests {
     fn test_visit_can_capture_subsequent_item_with_long_form() {
         let args = ["--config", "value", "--oops"].map(str::to_string);
         let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
             |flag: &str| -> Option<Hint> {
                 if flag == "config" || flag == "oops" {
                     Some(Hint::Capture)
@@ -159,7 +183,6 @@ mod tests {
                     None
                 }
             },
-            OverridableVisitor::ignore_argument,
             OverridableVisitor::ignore_parameter,
         );
 
@@ -196,6 +219,7 @@ mod tests {
     fn test_visit_can_capture_subsequent_item_with_short_form() {
         let args = ["-a", "value", "-b"].map(str::to_string);
         let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
             |flag: &str| -> Option<Hint> {
                 if flag == "a" || flag == "b" {
                     Some(Hint::Capture)
@@ -203,7 +227,6 @@ mod tests {
                     None
                 }
             },
-            OverridableVisitor::ignore_argument,
             OverridableVisitor::ignore_parameter,
         );
 
@@ -222,6 +245,7 @@ mod tests {
     fn test_visit_can_capture_remainder_of_short_form_option_as_parameter() {
         let args = ["-avalue", "-b"].map(str::to_string);
         let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
             |flag: &str| -> Option<Hint> {
                 if flag == "a" {
                     Some(Hint::Capture)
@@ -229,7 +253,6 @@ mod tests {
                     None
                 }
             },
-            OverridableVisitor::ignore_argument,
             OverridableVisitor::ignore_parameter,
         );
 
@@ -238,6 +261,170 @@ mod tests {
         assert_eq!(
             visitor.items(),
             vec![Expect::Parameter("a", Some("value")), Expect::Flag("b")]
+        );
+    }
+
+    #[test]
+    fn test_visit_recognizes_stop_options_from_argument() {
+        let args = ["-a", "value", "-b"].map(str::to_string);
+        let mut visitor = OverridableVisitor::new(
+            |_: &str| -> Option<Hint> { Some(Hint::StopOptions) },
+            OverridableVisitor::ignore_flag,
+            OverridableVisitor::ignore_parameter,
+        );
+
+        visit(args.into_iter(), &mut visitor);
+
+        assert_eq!(
+            visitor.items(),
+            vec![
+                Expect::Flag("a"),
+                Expect::Argument("value"),
+                Expect::Argument("-b")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_visit_recognizes_stop_options_from_unit_flag() {
+        let args = ["abc", "-d", "-e"].map(str::to_string);
+        let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
+            |_: &str| -> Option<Hint> { Some(Hint::StopOptions) },
+            OverridableVisitor::ignore_parameter,
+        );
+
+        visit(args.into_iter(), &mut visitor);
+
+        assert_eq!(
+            visitor.items(),
+            vec![
+                Expect::Argument("abc"),
+                Expect::Flag("d"),
+                Expect::Argument("-e")
+            ],
+        );
+    }
+
+    #[test]
+    fn test_visit_recognizes_stop_options_from_composite_flag() {
+        let args = ["abc", "-def", "-g"].map(str::to_string);
+        let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
+            |flag: &str| -> Option<Hint> {
+                if flag == "d" {
+                    Some(Hint::StopOptions)
+                } else {
+                    None
+                }
+            },
+            OverridableVisitor::ignore_parameter,
+        );
+
+        visit(args.into_iter(), &mut visitor);
+
+        assert_eq!(
+            visitor.items(),
+            vec![
+                Expect::Argument("abc"),
+                Expect::Flag("d"),
+                Expect::Flag("e"),
+                Expect::Flag("f"),
+                Expect::Argument("-g"),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_visit_recognizes_stop_options_from_aggregate_parameter() {
+        let args = ["abc", "--def=ghi", "--jkl"].map(str::to_string);
+        let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
+            OverridableVisitor::ignore_flag,
+            |flag: &str, _: Option<&str>| -> Option<Hint> {
+                if flag == "def" {
+                    Some(Hint::StopOptions)
+                } else {
+                    None
+                }
+            },
+        );
+
+        visit(args.into_iter(), &mut visitor);
+
+        assert_eq!(
+            visitor.items(),
+            vec![
+                Expect::Argument("abc"),
+                Expect::Parameter("def", Some("ghi")),
+                Expect::Argument("--jkl"),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_visit_recognizes_stop_options_from_capturing_long_parameter() {
+        let args = ["abc", "--def", "ghi", "--jkl"].map(str::to_string);
+        let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
+            |flag: &str| -> Option<Hint> {
+                if flag == "def" {
+                    Some(Hint::Capture)
+                } else {
+                    None
+                }
+            },
+            |flag: &str, _: Option<&str>| -> Option<Hint> {
+                if flag == "def" {
+                    Some(Hint::StopOptions)
+                } else {
+                    None
+                }
+            }
+        );
+
+        visit(args.into_iter(), &mut visitor);
+
+        assert_eq!(
+            visitor.items(),
+            vec![
+                Expect::Argument("abc"),
+                Expect::Parameter("def", Some("ghi")),
+                Expect::Argument("--jkl"),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_visit_recognizes_stop_options_from_capturing_short_parameter() {
+        let args = ["abc", "-d", "efg", "-hij"].map(str::to_string);
+        let mut visitor = OverridableVisitor::new(
+            OverridableVisitor::ignore_argument,
+            |flag: &str| -> Option<Hint> {
+                if flag == "d" {
+                    Some(Hint::Capture)
+                } else {
+                    None
+                }
+            },
+            |flag: &str, _: Option<&str>| -> Option<Hint> {
+                if flag == "d" {
+                    Some(Hint::StopOptions)
+                } else {
+                    None
+                }
+            }
+        );
+
+        visit(args.into_iter(), &mut visitor);
+
+        assert_eq!(
+            visitor.items(),
+            vec![
+                Expect::Argument("abc"),
+                Expect::Parameter("d", Some("efg")),
+                Expect::Argument("-hij"),
+            ]
         );
     }
 
@@ -260,25 +447,23 @@ mod tests {
         }
 
         #[derive(Clone)]
-        pub struct ItemSet {
-            items: Vec<Item>,
-        }
+        pub struct ItemSet(Vec<Item>);
 
         impl ItemSet {
             fn new() -> Self {
-                ItemSet { items: Vec::new() }
+                ItemSet(Vec::new())
             }
 
             fn push_argument(&mut self, argument: &str) {
-                self.items.push(Item::Argument(argument.to_owned()));
+                self.0.push(Item::Argument(argument.to_owned()));
             }
 
             fn push_flag(&mut self, flag: &str) {
-                self.items.push(Item::Flag(flag.to_owned()));
+                self.0.push(Item::Flag(flag.to_owned()));
             }
 
             fn push_parameter(&mut self, name: &str, value: Option<&str>) {
-                self.items.push(Item::Parameter(
+                self.0.push(Item::Parameter(
                     name.into(),
                     match value {
                         Some(param) => Some(param.to_owned()),
@@ -290,30 +475,35 @@ mod tests {
 
         impl Debug for ItemSet {
             fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{:?}", self.items)
+                write!(f, "{:?}", self.0)
             }
         }
 
         impl PartialEq<Vec<Expect<'_>>> for ItemSet {
             fn eq(&self, other: &Vec<Expect<'_>>) -> bool {
-                if self.items.len() != other.len() {
+                if self.0.len() != other.len() {
                     return false;
                 }
 
-                for (i, item) in self.items.iter().enumerate() {
-                    match (item, &other[i]) {
+                for (i, item) in self.0.iter().enumerate() {
+                    let result = match (item, &other[i]) {
                         (Item::Argument(a), Expect::Argument(b)) => a.eq(b),
                         (Item::Flag(a), Expect::Flag(b)) => a.eq(b),
                         (Item::Parameter(an, ap), Expect::Parameter(bn, bp)) => {
                             an.eq(bn) && {
                                 match (ap, bp) {
                                     (Some(a), Some(b)) => a.eq(b),
+                                    (None, None) => true,
                                     _ => false,
                                 }
                             }
                         }
                         _ => false,
                     };
+
+                    if result == false {
+                        return false;
+                    }
                 }
 
                 true
@@ -355,21 +545,21 @@ mod tests {
 
         pub struct OverridableVisitor {
             collecting_visitor: CollectingVisitor,
-            override_visit_flag: fn(&str) -> Option<Hint>,
             override_visit_argument: fn(&str) -> Option<Hint>,
+            override_visit_flag: fn(&str) -> Option<Hint>,
             override_visit_parameter: fn(&str, Option<&str>) -> Option<Hint>,
         }
 
         impl OverridableVisitor {
             pub fn new(
-                visit_flag: fn(&str) -> Option<Hint>,
                 visit_argument: fn(&str) -> Option<Hint>,
+                visit_flag: fn(&str) -> Option<Hint>,
                 visit_parameter: fn(&str, Option<&str>) -> Option<Hint>,
             ) -> Self {
                 Self {
                     collecting_visitor: CollectingVisitor::new(),
-                    override_visit_flag: visit_flag,
                     override_visit_argument: visit_argument,
+                    override_visit_flag: visit_flag,
                     override_visit_parameter: visit_parameter,
                 }
             }
@@ -378,12 +568,14 @@ mod tests {
                 self.collecting_visitor.items()
             }
 
-            pub fn ignore_flag(_: &str) -> Option<Hint> {
-                None
-            }
             pub fn ignore_argument(_: &str) -> Option<Hint> {
                 None
             }
+
+            pub fn ignore_flag(_: &str) -> Option<Hint> {
+                None
+            }
+
             pub fn ignore_parameter(_: &str, _: Option<&str>) -> Option<Hint> {
                 None
             }
@@ -391,30 +583,39 @@ mod tests {
 
         impl Visitor for OverridableVisitor {
             fn visit_argument(&mut self, argument: &str) -> Option<Hint> {
-                match (self.override_visit_argument)(argument) {
-                    Some(hint) => return Some(hint),
-                    None => (),
-                };
+                let hint = (self.override_visit_argument)(argument);
 
-                self.collecting_visitor.visit_argument(argument)
+                match hint {
+                    Some(Hint::Capture) => hint,
+                    Some(Hint::StopOptions) | None => {
+                        self.collecting_visitor.visit_argument(argument);
+                        hint
+                    }
+                }
             }
 
             fn visit_flag(&mut self, option: &str) -> Option<Hint> {
-                match (self.override_visit_flag)(option) {
-                    Some(hint) => return Some(hint),
-                    None => (),
-                };
+                let hint = (self.override_visit_flag)(option);
 
-                self.collecting_visitor.visit_flag(option)
+                match hint {
+                    Some(Hint::Capture) => hint,
+                    Some(Hint::StopOptions) | None => {
+                        self.collecting_visitor.visit_flag(option);
+                        hint
+                    }
+                }
             }
 
             fn visit_parameter(&mut self, name: &str, parameter: Option<&str>) -> Option<Hint> {
-                match (self.override_visit_parameter)(name, parameter) {
-                    Some(hint) => return Some(hint),
-                    None => (),
-                };
+                let hint = (self.override_visit_parameter)(name, parameter);
 
-                self.collecting_visitor.visit_parameter(name, parameter)
+                match hint {
+                    Some(Hint::Capture) => hint,
+                    Some(Hint::StopOptions) | None => {
+                        self.collecting_visitor.visit_parameter(name, parameter);
+                        hint
+                    }
+                }
             }
         }
     }

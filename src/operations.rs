@@ -31,9 +31,9 @@ pub fn run(
 }
 
 fn install(
-    arguments: Vec<String>,
-    options: &Options,
-    (out, err): (&mut impl io::Write, &mut impl io::Write),
+    _arguments: Vec<String>,
+    _options: &Options,
+    (_out, _err): (&mut impl io::Write, &mut impl io::Write),
 ) -> Result<()> {
     Ok(())
 }

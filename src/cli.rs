@@ -1,4 +1,6 @@
+use crate::uopt::Hint;
 use crate::winstall::{Error, Result};
+use crate::{uopt, winstall};
 use std::env;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -9,7 +11,7 @@ enum Backup {
     Simple,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Options {
     verbose: bool,
     create_parents: bool,
@@ -51,94 +53,131 @@ impl Config {
     }
 }
 
+struct Visitor {
+    error: Option<Error>,
+    config: Config,
+    options: Options,
+    arguments: Vec<String>,
+}
+
+impl Visitor {
+    fn new(config: Config) -> Self {
+        let mut options = Options::default();
+
+        if let Some(suffix) = &config.simple_backup_suffix {
+            options.backup_suffix = suffix.clone();
+        }
+
+        Self {
+            error: None,
+            config,
+            options,
+            arguments: Vec::new(),
+        }
+    }
+
+    fn error(&self) -> Option<Error> {
+        self.error.clone()
+    }
+
+    fn options(&self) -> Options {
+        self.options.clone()
+    }
+
+    fn arguments(&self) -> Vec<String> {
+        self.arguments.clone()
+    }
+
+    fn set_backup_from(&mut self, indicator: &str, source: &str) {
+        match select_backup_strategy(indicator, source) {
+            Ok(strategy) => self.options.backup_type = strategy,
+            Err(e) => self.error = Some(e),
+        }
+    }
+}
+
+impl uopt::Visitor for Visitor {
+    fn visit_argument(&mut self, argument: &str) -> Option<Hint> {
+        self.arguments.push(argument.to_string());
+
+        Some(Hint::StopOptions)
+    }
+
+    fn visit_flag(&mut self, option: &str) -> Option<Hint> {
+        match option {
+            "v" | "verbose" => self.options.verbose = true,
+            "D" => self.options.create_parents = true,
+            "d" | "directory" => self.options.directory_args = true,
+            "p" | "preserve-timestamps" => self.options.preserve_timestamps = true,
+            "T" | "no-target-directory" => self.options.no_target_directory = true,
+            "b" => {
+                if let Some(vc) = &self.config.version_control {
+                    self.set_backup_from(&vc.clone(), "$VERSION_CONTROL");
+                } else {
+                    self.options.backup_type = Backup::Existing;
+                }
+            }
+            "backup" => return Some(Hint::Capture),
+            "S" => return Some(Hint::Capture),
+            "t" => return Some(Hint::Capture),
+            "g" | "m" | "o" => return Some(Hint::Capture),
+            "-C" | "--compare" | "-c" | "--debug" | "--preserve-context" | "--group" | "--mode"
+            | "--owner" | "-s" | "--strip" | "--strip-program" => (),
+            _ => (),
+        };
+
+        None
+    }
+
+    fn visit_parameter(&mut self, name: &str, parameter: Option<&str>) -> Option<Hint> {
+        match name {
+            "backup" => match (parameter, &self.config.version_control.clone()) {
+                (Some(param), _) => {
+                    self.set_backup_from(param, "backup type");
+                }
+                (None, Some(vc)) => {
+                    self.set_backup_from(&vc, "$VERSION_CONTROL");
+                }
+                _ => self.options.backup_type = Backup::Existing,
+            },
+            "S" | "suffix" => match parameter {
+                Some("") => self.options.backup_suffix = "~".to_string(),
+                Some(suffix) => self.options.backup_suffix = suffix.to_string(),
+                _ => (),
+            },
+            "t" | "target-directory" => {
+                if let Some(dir) = parameter {
+                    self.options.target_directory = Some(dir.to_string());
+                }
+            }
+            _ => (),
+        };
+
+        None
+    }
+}
+
+fn select_backup_strategy(indicator: &str, source: &str) -> Result<Backup> {
+    match indicator {
+        "none" | "off" => Ok(Backup::None),
+        "simple" | "never" => Ok(Backup::Simple),
+        "existing" | "nil" | "" => Ok(Backup::Existing),
+        "numbered" | "t" => Ok(Backup::Numbered),
+        var => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
+    }
+}
+
 pub fn get_options<A: IntoIterator<Item = String>>(
     args: A,
     config: Config,
 ) -> Result<(Vec<String>, Options)> {
-    fn determine_backup_type(indicator: &str, source: &str) -> Result<Backup> {
-        match indicator {
-            "none" | "off" => Ok(Backup::None),
-            "simple" | "never" => Ok(Backup::Simple),
-            "existing" | "nil" | "" => Ok(Backup::Existing),
-            "numbered" | "t" => Ok(Backup::Numbered),
-            var => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
-        }
+    let mut visitor = Visitor::new(config);
+    uopt::visit(args.into_iter(), &mut visitor);
+
+    match visitor.error() {
+        Some(e) => Err(e),
+        None => Ok((visitor.arguments(), visitor.options())),
     }
-
-    let mut arguments = args.into_iter().peekable();
-    let mut context = Options::default();
-
-    if let Some(suffix) = config.simple_backup_suffix {
-        context.backup_suffix = suffix;
-    }
-
-    while let Some(arg) = arguments.peek() {
-        let mut split = arg.split("=");
-        let opt_or_arg = split.next().unwrap();
-
-        match opt_or_arg {
-            "-v" | "--verbose" => context.verbose = true,
-            "-D" => context.create_parents = true,
-            "-d" | "--directory" => context.directory_args = true,
-            "-p" | "--preserve-timestamps" => context.preserve_timestamps = true,
-            "-T" | "--no-target-directory" => context.no_target_directory = true,
-            "-b" => {
-                context.backup_type = {
-                    if let Some(vc) = &config.version_control {
-                        determine_backup_type(vc, "$VERSION_CONTROL")?
-                    } else {
-                        Backup::Existing
-                    }
-                }
-            }
-            "--backup" => {
-                context.backup_type = {
-                    if let Some(specified) = split.next() {
-                        determine_backup_type(specified, "backup type")?
-                    } else if let Some(vc) = &config.version_control {
-                        determine_backup_type(vc, "$VERSION_CONTROL")?
-                    } else {
-                        Backup::Existing
-                    }
-                }
-            }
-            "-S" => {
-                arguments.next();
-
-                if let Some(suffix) = arguments.peek() {
-                    context.backup_suffix = suffix.to_string();
-                }
-            }
-            "--suffix" => {
-                context.backup_suffix = match split.next() {
-                    Some("") | None => "~".to_string(),
-                    Some(suffix) => suffix.to_string(),
-                }
-            }
-            "-t" => {
-                arguments.next();
-
-                if let Some(target) = arguments.peek() {
-                    context.target_directory = Some(target.to_string());
-                }
-            }
-            "--target-directory" => {
-                if let Some(target) = split.next() {
-                    context.target_directory = Some(target.to_string());
-                }
-            }
-            "-g" | "-m" | "-o" => {
-                arguments.next();
-            }
-            "-C" | "--compare" | "-c" | "--debug" | "--preserve-context" | "--group" | "--mode"
-            | "--owner" | "-s" | "--strip" | "--strip-program" => (),
-            _ => break,
-        }
-
-        arguments.next();
-    }
-
-    Ok((arguments.collect(), context))
 }
 
 #[cfg(test)]

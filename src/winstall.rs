@@ -1,4 +1,4 @@
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Error {
     InvalidArgument(String, String),
     MissingOperand(String),

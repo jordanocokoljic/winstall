@@ -76,33 +76,30 @@ impl Visitor {
         }
     }
 
-    fn set_backup_from(&mut self, explicit: Option<&str>) {
-        let mut set_backup = |indicator: &str, source: &str| {
-            let strategy = match indicator {
-                "none" | "off" => Ok(Backup::None),
-                "simple" | "never" => Ok(Backup::Simple),
-                "existing" | "nil" | "" => Ok(Backup::Existing),
-                "numbered" | "t" => Ok(Backup::Numbered),
-                var => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
-            };
+    fn error(&self) -> Option<Error> {
+        self.error.clone()
+    }
 
-            match strategy {
-                Ok(strategy) => self.options.backup_type = strategy,
-                Err(e) => self.error = Some(e),
-            };
-        };
+    fn options(&self) -> Options {
+        self.options.clone()
+    }
 
-        match (explicit, &self.config.simple_backup_suffix) {
-            (Some(e), _) => set_backup(e, "backup type"),
-            (None, Some(c)) => set_backup(c.as_ref(), "$VERSION_CONTROL"),
-            (None, None) => self.options.backup_type = Backup::Existing,
-        };
+    fn arguments(&self) -> Vec<String> {
+        self.arguments.clone()
+    }
+
+    fn set_backup_from(&mut self, indicator: &str, source: &str) {
+        match select_backup_strategy(indicator, source) {
+            Ok(strategy) => self.options.backup_type = strategy,
+            Err(e) => self.error = Some(e),
+        }
     }
 }
 
 impl uopt::Visitor for Visitor {
     fn visit_argument(&mut self, argument: &str) -> Option<Hint> {
         self.arguments.push(argument.to_string());
+
         Some(Hint::StopOptions)
     }
 
@@ -113,7 +110,13 @@ impl uopt::Visitor for Visitor {
             "d" | "directory" => self.options.directory_args = true,
             "p" | "preserve-timestamps" => self.options.preserve_timestamps = true,
             "T" | "no-target-directory" => self.options.no_target_directory = true,
-            "b" => self.set_backup_from(None),
+            "b" => {
+                if let Some(vc) = &self.config.version_control {
+                    self.set_backup_from(&vc.clone(), "$VERSION_CONTROL");
+                } else {
+                    self.options.backup_type = Backup::Existing;
+                }
+            }
             "backup" => return Some(Hint::Capture),
             "S" => return Some(Hint::Capture),
             "t" => return Some(Hint::Capture),
@@ -128,7 +131,15 @@ impl uopt::Visitor for Visitor {
 
     fn visit_parameter(&mut self, name: &str, parameter: Option<&str>) -> Option<Hint> {
         match name {
-            "backup" => self.set_backup_from(parameter),
+            "backup" => match (parameter, &self.config.version_control.clone()) {
+                (Some(param), _) => {
+                    self.set_backup_from(param, "backup type");
+                }
+                (None, Some(vc)) => {
+                    self.set_backup_from(&vc, "$VERSION_CONTROL");
+                }
+                _ => self.options.backup_type = Backup::Existing,
+            },
             "S" | "suffix" => match parameter {
                 Some("") => self.options.backup_suffix = "~".to_string(),
                 Some(suffix) => self.options.backup_suffix = suffix.to_string(),
@@ -146,6 +157,16 @@ impl uopt::Visitor for Visitor {
     }
 }
 
+fn select_backup_strategy(indicator: &str, source: &str) -> Result<Backup> {
+    match indicator {
+        "none" | "off" => Ok(Backup::None),
+        "simple" | "never" => Ok(Backup::Simple),
+        "existing" | "nil" | "" => Ok(Backup::Existing),
+        "numbered" | "t" => Ok(Backup::Numbered),
+        var => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
+    }
+}
+
 pub fn get_options<A: IntoIterator<Item = String>>(
     args: A,
     config: Config,
@@ -153,9 +174,9 @@ pub fn get_options<A: IntoIterator<Item = String>>(
     let mut visitor = Visitor::new(config);
     uopt::visit(args.into_iter(), &mut visitor);
 
-    match visitor.error {
+    match visitor.error() {
         Some(e) => Err(e),
-        None => Ok((visitor.arguments, visitor.options)),
+        None => Ok((visitor.arguments(), visitor.options())),
     }
 }
 

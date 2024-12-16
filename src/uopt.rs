@@ -86,7 +86,8 @@ pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor
                         }
                         Some(Hint::Capture) => {
                             if let Some((to, _)) = peek {
-                                let parameter_hint = visitor.visit_parameter(&trimmed[from..*to], Some(&trimmed[*to..]));
+                                let parameter_hint = visitor
+                                    .visit_parameter(&trimmed[from..*to], Some(&trimmed[*to..]));
                                 match parameter_hint {
                                     Some(Hint::StopOptions) => take_options = false,
                                     Some(Hint::Halt) => return,
@@ -112,7 +113,7 @@ pub fn visit(arguments: impl Iterator<Item = String>, visitor: &mut impl Visitor
                             }
 
                             peekable.next();
-                        },
+                        }
                         Some(Hint::Halt) => {
                             return;
                         }
@@ -400,7 +401,7 @@ mod tests {
                 } else {
                     None
                 }
-            }
+            },
         );
 
         visit(args.into_iter(), &mut visitor);
@@ -433,7 +434,7 @@ mod tests {
                 } else {
                     None
                 }
-            }
+            },
         );
 
         visit(args.into_iter(), &mut visitor);
@@ -466,7 +467,7 @@ mod tests {
                 } else {
                     None
                 }
-            }
+            },
         );
 
         visit(args.into_iter(), &mut visitor);
@@ -494,10 +495,7 @@ mod tests {
 
         assert_eq!(
             visitor.items(),
-            vec![
-                Expect::Flag("a"),
-                Expect::Argument("value"),
-            ],
+            vec![Expect::Flag("a"), Expect::Argument("value"),],
         );
     }
 
@@ -514,10 +512,7 @@ mod tests {
 
         assert_eq!(
             visitor.items(),
-            vec![
-                Expect::Argument("abc"),
-                Expect::Flag("d"),
-            ],
+            vec![Expect::Argument("abc"), Expect::Flag("d"),],
         );
     }
 
@@ -592,7 +587,7 @@ mod tests {
                 } else {
                     None
                 }
-            }
+            },
         );
 
         visit(args.into_iter(), &mut visitor);
@@ -624,17 +619,14 @@ mod tests {
                 } else {
                     None
                 }
-            }
+            },
         );
 
         visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
-            vec![
-                Expect::Argument("abc"),
-                Expect::Parameter("d", Some("efg")),
-            ]
+            vec![Expect::Argument("abc"), Expect::Parameter("d", Some("efg")),]
         );
     }
 
@@ -656,17 +648,14 @@ mod tests {
                 } else {
                     None
                 }
-            }
+            },
         );
 
         visit(args.into_iter(), &mut visitor);
 
         assert_eq!(
             visitor.items(),
-            vec![
-                Expect::Argument("abc"),
-                Expect::Parameter("d", Some("efg")),
-            ]
+            vec![Expect::Argument("abc"), Expect::Parameter("d", Some("efg")),]
         );
     }
 
@@ -853,7 +842,7 @@ mod tests {
 
                 match hint {
                     Some(Hint::Capture) => hint,
-                    Some(Hint::StopOptions) | Some(Hint::Halt) |  None => {
+                    Some(Hint::StopOptions) | Some(Hint::Halt) | None => {
                         self.collecting_visitor.visit_parameter(name, parameter);
                         hint
                     }

@@ -1,6 +1,6 @@
 use crate::uopt::Hint;
 use crate::winstall::{Error, Result};
-use crate::{uopt, winstall};
+use crate::uopt;
 use std::env;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -76,22 +76,42 @@ impl Visitor {
         }
     }
 
-    fn error(&self) -> Option<Error> {
-        self.error.clone()
-    }
+    fn set_backup_from(&mut self, provided: Option<&str>) -> Option<Hint> {
+        fn to_strategy(input: &Option<impl AsRef<str>>, source: &str) -> Result<Option<Backup>> {
+            match input.as_ref().map(|x| x.as_ref()) {
+                Some("none" | "off") => Ok(Some(Backup::None)),
+                Some("simple" | "never") => Ok(Some(Backup::Simple)),
+                Some("existing" | "nil") => Ok(Some(Backup::Existing)),
+                Some("numbered" | "t") => Ok(Some(Backup::Numbered)),
+                Some(var) => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
+                None => Ok(None),
+            }
+        }
 
-    fn options(&self) -> Options {
-        self.options.clone()
-    }
-
-    fn arguments(&self) -> Vec<String> {
-        self.arguments.clone()
-    }
-
-    fn set_backup_from(&mut self, indicator: &str, source: &str) {
-        match select_backup_strategy(indicator, source) {
-            Ok(strategy) => self.options.backup_type = strategy,
-            Err(e) => self.error = Some(e),
+        match (
+            to_strategy(&provided, "backup type"),
+            to_strategy(&self.config.version_control, "$VERSION_CONTROL"),
+        ) {
+            (Ok(Some(user)), _) => {
+                self.options.backup_type = user;
+                None
+            }
+            (Ok(None), Ok(Some(config))) => {
+                self.options.backup_type = config;
+                None
+            }
+            (Ok(None), Ok(None)) => {
+                self.options.backup_type = Backup::Existing;
+                None
+            }
+            (Err(e), _) => {
+                self.error = Some(e);
+                Some(Hint::Halt)
+            }
+            (Ok(None), Err(e)) => {
+                self.error = Some(e);
+                Some(Hint::Halt)
+            }
         }
     }
 }
@@ -99,7 +119,6 @@ impl Visitor {
 impl uopt::Visitor for Visitor {
     fn visit_argument(&mut self, argument: &str) -> Option<Hint> {
         self.arguments.push(argument.to_string());
-
         Some(Hint::StopOptions)
     }
 
@@ -110,13 +129,7 @@ impl uopt::Visitor for Visitor {
             "d" | "directory" => self.options.directory_args = true,
             "p" | "preserve-timestamps" => self.options.preserve_timestamps = true,
             "T" | "no-target-directory" => self.options.no_target_directory = true,
-            "b" => {
-                if let Some(vc) = &self.config.version_control {
-                    self.set_backup_from(&vc.clone(), "$VERSION_CONTROL");
-                } else {
-                    self.options.backup_type = Backup::Existing;
-                }
-            }
+            "b" => return self.set_backup_from(None),
             "backup" => return Some(Hint::Capture),
             "S" => return Some(Hint::Capture),
             "t" => return Some(Hint::Capture),
@@ -131,15 +144,7 @@ impl uopt::Visitor for Visitor {
 
     fn visit_parameter(&mut self, name: &str, parameter: Option<&str>) -> Option<Hint> {
         match name {
-            "backup" => match (parameter, &self.config.version_control.clone()) {
-                (Some(param), _) => {
-                    self.set_backup_from(param, "backup type");
-                }
-                (None, Some(vc)) => {
-                    self.set_backup_from(&vc, "$VERSION_CONTROL");
-                }
-                _ => self.options.backup_type = Backup::Existing,
-            },
+            "backup" => return self.set_backup_from(parameter),
             "S" | "suffix" => match parameter {
                 Some("") => self.options.backup_suffix = "~".to_string(),
                 Some(suffix) => self.options.backup_suffix = suffix.to_string(),
@@ -157,16 +162,6 @@ impl uopt::Visitor for Visitor {
     }
 }
 
-fn select_backup_strategy(indicator: &str, source: &str) -> Result<Backup> {
-    match indicator {
-        "none" | "off" => Ok(Backup::None),
-        "simple" | "never" => Ok(Backup::Simple),
-        "existing" | "nil" | "" => Ok(Backup::Existing),
-        "numbered" | "t" => Ok(Backup::Numbered),
-        var => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
-    }
-}
-
 pub fn get_options<A: IntoIterator<Item = String>>(
     args: A,
     config: Config,
@@ -174,9 +169,9 @@ pub fn get_options<A: IntoIterator<Item = String>>(
     let mut visitor = Visitor::new(config);
     uopt::visit(args.into_iter(), &mut visitor);
 
-    match visitor.error() {
+    match visitor.error {
         Some(e) => Err(e),
-        None => Ok((visitor.arguments(), visitor.options())),
+        None => Ok((visitor.arguments, visitor.options)),
     }
 }
 

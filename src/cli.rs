@@ -12,6 +12,13 @@ enum Backup {
 }
 
 #[derive(PartialEq, Debug, Clone)]
+pub enum Alternate {
+    Standard,
+    Help,
+    Version,
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub struct Options {
     verbose: bool,
     create_parents: bool,
@@ -21,6 +28,7 @@ pub struct Options {
     backup_suffix: String,
     target_directory: Option<String>,
     no_target_directory: bool,
+    pub alternate: Alternate,
 }
 
 impl Default for Options {
@@ -34,6 +42,7 @@ impl Default for Options {
             backup_suffix: "~".to_string(),
             target_directory: None,
             no_target_directory: false,
+            alternate: Alternate::Standard,
         }
     }
 }
@@ -124,6 +133,14 @@ impl uopt::Visitor for Visitor {
 
     fn visit_flag(&mut self, option: &str) -> Option<Hint> {
         match option {
+            "help" => {
+                self.options.alternate = Alternate::Help;
+                return Some(Hint::Halt);
+            },
+            "version" => {
+                self.options.alternate = Alternate::Version;
+                return Some(Hint::Halt);
+            },
             "v" | "verbose" => self.options.verbose = true,
             "D" => self.options.create_parents = true,
             "d" | "directory" => self.options.directory_args = true,
@@ -177,7 +194,7 @@ pub fn get_options<A: IntoIterator<Item = String>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::{get_options, Backup, Config, Options};
+    use crate::cli::{get_options, Alternate, Backup, Config, Options};
     use crate::winstall::Error;
     use std::env;
 
@@ -194,6 +211,7 @@ mod tests {
                 backup_suffix: "~".to_string(),
                 target_directory: None,
                 no_target_directory: false,
+                alternate: Alternate::Standard,
             },
             options,
         );
@@ -646,5 +664,33 @@ mod tests {
             },
             Config::from_env(),
         )
+    }
+
+    #[test]
+    fn test_options_detects_alternate_help_action() {
+        let args = ["--help"].map(str::to_string);
+        let (_, outcome) = get_options(args.into_iter(), Config::default()).unwrap();
+
+        assert_eq!(
+            Options {
+                alternate: Alternate::Help,
+                ..Default::default()
+            },
+            outcome
+        );
+    }
+
+    #[test]
+    fn test_options_detects_alternate_version_action() {
+        let args = ["--version"].map(str::to_string);
+        let (_, outcome) = get_options(args.into_iter(), Config::default()).unwrap();
+
+        assert_eq!(
+            Options {
+                alternate: Alternate::Version,
+                ..Default::default()
+            },
+            outcome
+        );
     }
 }

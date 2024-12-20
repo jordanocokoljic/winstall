@@ -10,7 +10,7 @@ use std::io::{stderr, stdout};
 
 fn main() -> winstall::Result<()> {
     let config = Config::from_env();
-    let (rest, options) = get_options(args().skip(1), config)?;
+    let (arguments, options) = get_options(args().skip(1), config)?;
 
-    operations::run(rest, &options, (&mut stdout(), &mut stderr()))
+    operations::run(arguments, &options, (&mut stdout(), &mut stderr()))
 }

@@ -1,8 +1,8 @@
-use std::io;
 use crate::cli::{Action, Options};
 use crate::winstall;
-use winstall::Result;
 use crate::winstall::Error::MissingOperand;
+use std::io;
+use winstall::Result;
 
 const VERSION: &str = include_str!("version.txt");
 const HELP: &str = include_str!("usage.txt");
@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        let mut out  = Vec::new();
+        let mut out = Vec::new();
         version(&mut out).expect("unable to write version message");
 
         assert_eq!(
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_help() {
-        let mut out  = Vec::new();
+        let mut out = Vec::new();
         help(&mut out).expect("unable to write help message");
 
         assert_eq!(
@@ -71,10 +71,11 @@ mod tests {
 
     #[test]
     fn test_install_no_arguments_causes_missing_file_operand() {
-        let result = install(Vec::new(), &Options::default(), (&mut Vec::new(), &mut Vec::new()));
-        assert_eq!(
-            result.unwrap_err(),
-            MissingOperand("file".to_string())
+        let result = install(
+            Vec::new(),
+            &Options::default(),
+            (&mut Vec::new(), &mut Vec::new()),
         );
+        assert_eq!(result.unwrap_err(), MissingOperand("file".to_string()));
     }
 }

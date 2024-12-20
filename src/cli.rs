@@ -1,6 +1,6 @@
+use crate::uopt;
 use crate::uopt::Hint;
 use crate::winstall::{Backup, Error, Result};
-use crate::uopt;
 use std::env;
 
 #[derive(PartialEq, Debug, Clone)]
@@ -128,11 +128,11 @@ impl uopt::Visitor for Visitor {
             "help" => {
                 self.options.alternate = Action::Help;
                 return Some(Hint::Halt);
-            },
+            }
             "version" => {
                 self.options.alternate = Action::Version;
                 return Some(Hint::Halt);
-            },
+            }
             "v" | "verbose" => self.options.verbose = true,
             "D" => self.options.create_parents = true,
             "d" | "directory" => self.options.directory_args = true,

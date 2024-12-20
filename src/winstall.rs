@@ -5,3 +5,11 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Backup {
+    None,
+    Numbered,
+    Existing,
+    Simple,
+}

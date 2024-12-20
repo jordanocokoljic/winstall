@@ -1,19 +1,11 @@
 use crate::uopt::Hint;
-use crate::winstall::{Error, Result};
+use crate::winstall::{Backup, Error, Result};
 use crate::uopt;
 use std::env;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum Backup {
-    None,
-    Numbered,
-    Existing,
-    Simple,
-}
-
 #[derive(PartialEq, Debug, Clone)]
-pub enum Alternate {
-    Standard,
+pub enum Action {
+    Install,
     Help,
     Version,
 }
@@ -28,7 +20,7 @@ pub struct Options {
     backup_suffix: String,
     target_directory: Option<String>,
     no_target_directory: bool,
-    pub alternate: Alternate,
+    pub alternate: Action,
 }
 
 impl Default for Options {
@@ -42,7 +34,7 @@ impl Default for Options {
             backup_suffix: "~".to_string(),
             target_directory: None,
             no_target_directory: false,
-            alternate: Alternate::Standard,
+            alternate: Action::Install,
         }
     }
 }
@@ -134,11 +126,11 @@ impl uopt::Visitor for Visitor {
     fn visit_flag(&mut self, option: &str) -> Option<Hint> {
         match option {
             "help" => {
-                self.options.alternate = Alternate::Help;
+                self.options.alternate = Action::Help;
                 return Some(Hint::Halt);
             },
             "version" => {
-                self.options.alternate = Alternate::Version;
+                self.options.alternate = Action::Version;
                 return Some(Hint::Halt);
             },
             "v" | "verbose" => self.options.verbose = true,
@@ -194,8 +186,8 @@ pub fn get_options<A: IntoIterator<Item = String>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::{get_options, Alternate, Backup, Config, Options};
-    use crate::winstall::Error;
+    use crate::cli::{get_options, Action, Config, Options};
+    use crate::winstall::{Backup, Error};
     use std::env;
 
     #[test]
@@ -211,7 +203,7 @@ mod tests {
                 backup_suffix: "~".to_string(),
                 target_directory: None,
                 no_target_directory: false,
-                alternate: Alternate::Standard,
+                alternate: Action::Install,
             },
             options,
         );
@@ -673,7 +665,7 @@ mod tests {
 
         assert_eq!(
             Options {
-                alternate: Alternate::Help,
+                alternate: Action::Help,
                 ..Default::default()
             },
             outcome
@@ -687,7 +679,7 @@ mod tests {
 
         assert_eq!(
             Options {
-                alternate: Alternate::Version,
+                alternate: Action::Version,
                 ..Default::default()
             },
             outcome

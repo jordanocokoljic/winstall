@@ -84,7 +84,7 @@ impl Visitor {
                 Some("simple" | "never") => Ok(Some(Backup::Simple)),
                 Some("existing" | "nil") => Ok(Some(Backup::Existing)),
                 Some("numbered" | "t") => Ok(Some(Backup::Numbered)),
-                Some(var) => Err(Error::InvalidArgument(var.to_string(), source.to_string())),
+                Some(var) => Err(Error::InvalidBackup(var.to_string(), source.to_string())),
                 None => Ok(None),
             }
         }
@@ -329,7 +329,7 @@ mod tests {
             TestCase {
                 argument: "-b".to_string(),
                 config_value: Some("bad value".to_string()),
-                expected: Err(Error::InvalidArgument(
+                expected: Err(Error::InvalidBackup(
                     "bad value".to_string(),
                     "$VERSION_CONTROL".to_string(),
                 )),
@@ -337,7 +337,7 @@ mod tests {
             TestCase {
                 argument: "--backup=bad value".to_string(),
                 config_value: None,
-                expected: Err(Error::InvalidArgument(
+                expected: Err(Error::InvalidBackup(
                     "bad value".to_string(),
                     "backup type".to_string(),
                 )),
@@ -375,7 +375,7 @@ mod tests {
             tests.push(TestCase {
                 argument: "--backup=bad value".to_string(),
                 config_value: Some(config.to_string()),
-                expected: Err(Error::InvalidArgument(
+                expected: Err(Error::InvalidBackup(
                     "bad value".to_string(),
                     "backup type".to_string(),
                 )),

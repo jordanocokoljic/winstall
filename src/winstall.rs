@@ -42,7 +42,7 @@ pub enum Backup {
 
 #[cfg(test)]
 mod tests {
-    use crate::winstall::Error::{InvalidBackup, MissingOperand};
+    use crate::winstall::Error::{DirectoryPermissionDenied, InvalidBackup, MissingOperand};
 
     #[test]
     fn test_error_display_missing_operand() {
@@ -61,5 +61,11 @@ Valid arguments are:
 
         let err = InvalidBackup("arg".to_string(), "source".to_string());
         assert_eq!(format!("{}", err), expected);
+    }
+
+    #[test]
+    fn test_error_directory_permission_denied() {
+        let err = DirectoryPermissionDenied("dir".to_string());
+        assert_eq!(format!("{}", err), "cannot create directory ‘dir’: Permission denied")
     }
 }

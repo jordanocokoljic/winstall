@@ -12,14 +12,14 @@ pub enum Action {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Options {
-    verbose: bool,
-    create_parents: bool,
-    directory_args: bool,
-    preserve_timestamps: bool,
-    backup_type: Backup,
-    backup_suffix: String,
-    target_directory: Option<String>,
-    no_target_directory: bool,
+    pub verbose: bool,
+    pub create_parents: bool,
+    pub directory_args: bool,
+    pub preserve_timestamps: bool,
+    pub backup_type: Backup,
+    pub backup_suffix: String,
+    pub target_directory: Option<String>,
+    pub no_target_directory: bool,
     pub alternate: Action,
 }
 

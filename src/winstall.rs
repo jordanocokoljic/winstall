@@ -2,6 +2,8 @@
 pub enum Error {
     InvalidBackup(String, String),
     MissingOperand(String),
+    PhBadWorkingDirectory,
+    DirectoryPermissionDenied(String),
 }
 
 impl std::fmt::Display for Error {
@@ -20,6 +22,10 @@ Valid arguments are:
                 )
             }
             Error::MissingOperand(operand) => write!(f, "missing {} operand", operand),
+            Error::PhBadWorkingDirectory => write!(f, "PH: unable to determine working directory"),
+            Error::DirectoryPermissionDenied(dir) => {
+                write!(f, "cannot create directory ‘{}’: Permission denied", dir)
+            }
         }
     }
 }

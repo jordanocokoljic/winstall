@@ -22,7 +22,10 @@ fn unwrap_or_exit<T>(result: Result<T, winstall::Error>) -> T {
     match result {
         Ok(x) => x,
         Err(e) => {
-            eprintln!("winstall: {}\nTry 'winstall --help' for more information.", e);
+            eprintln!(
+                "winstall: {}\nTry 'winstall --help' for more information.",
+                e
+            );
             std::process::exit(1);
         }
     }

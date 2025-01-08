@@ -16,10 +16,20 @@ where
         Operation::CopyFiles(files, destination) => {
             for file in files {
                 let source = container.as_ref().join(&file);
+
+                let filename = match file.file_name() {
+                    Some(filename) => filename,
+                    None => {
+                        let msg = format!("omitting directory '{}'", file.display());
+                        router.err(Box::new(msg));
+                        continue;
+                    }
+                };
+
                 let destination = container
                     .as_ref()
                     .join(&destination)
-                    .join(file.file_name().unwrap());
+                    .join(filename);
 
                 match copy(source, destination) {
                     Ok(_) => (),
@@ -32,6 +42,7 @@ where
                             "cannot stat '{}': Permission denied",
                             strip_prefix(&path, &container).display()
                         );
+
                         router.err(Box::new(msg));
                     }
                     Err(_) => (),
@@ -159,6 +170,24 @@ mod tests {
             "cannot stat '{}': Permission denied",
             Path::new("readonly_directory").join("from.txt").display()
         )));
+    }
+
+    #[test]
+    fn test_copy_files_with_invalid_source_filename() {
+        let operation = Operation::CopyFiles(
+            vec![PathBuf::from(".."), PathBuf::from("/"), PathBuf::from("C:\\")],
+            PathBuf::from("target"),
+        );
+
+        let mut router = RouterDouble::new();
+
+        perform_operation(operation, &"", &mut router);
+
+        dbg!(&router);
+
+        assert!(router.err_contains("omitting directory '..'"));
+        assert!(router.err_contains("omitting directory '/'"));
+        assert!(router.err_contains("omitting directory 'C:\\'"));
     }
 
     struct RouterDouble {

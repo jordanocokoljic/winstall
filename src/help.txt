@@ -45,7 +45,7 @@ mandatory for short options too.
   -m, --mode=MODE               (ignored; unix compatibility)
   -o, --owner=OWNER             (ignored; unix compatibility)
   --preserve-context            (ignored; unix compatibility)
-  -p, --preserve-timestamps     Set the time of last access and modificaiton of
+  -p, --preserve-timestamps     Set the time of last access and modification of
                                   each copied file to match the original. If
                                   this is not used, then the copied files will
                                   have their last access and modification time

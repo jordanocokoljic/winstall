@@ -26,10 +26,7 @@ where
                     }
                 };
 
-                let destination = container
-                    .as_ref()
-                    .join(&destination)
-                    .join(filename);
+                let destination = container.as_ref().join(&destination).join(filename);
 
                 match copy(source, destination) {
                     Ok(_) => (),
@@ -44,8 +41,15 @@ where
                         );
 
                         router.err(Box::new(msg));
+                    },
+                    Err(IoError::NotFound(path)) => {
+                        let msg = format!(
+                            "cannot stat '{}': No such file or directory",
+                            strip_prefix(&path, &container).display()
+                        );
+
+                        router.err(Box::new(msg));
                     }
-                    Err(_) => (),
                 }
             }
         }
@@ -175,7 +179,11 @@ mod tests {
     #[test]
     fn test_copy_files_with_invalid_source_filename() {
         let operation = Operation::CopyFiles(
-            vec![PathBuf::from(".."), PathBuf::from("/"), PathBuf::from("C:\\")],
+            vec![
+                PathBuf::from(".."),
+                PathBuf::from("/"),
+                PathBuf::from("C:\\"),
+            ],
             PathBuf::from("target"),
         );
 
@@ -183,11 +191,27 @@ mod tests {
 
         perform_operation(operation, &"", &mut router);
 
-        dbg!(&router);
-
         assert!(router.err_contains("omitting directory '..'"));
         assert!(router.err_contains("omitting directory '/'"));
         assert!(router.err_contains("omitting directory 'C:\\'"));
+    }
+
+    #[test]
+    fn test_copy_files_with_missing_source() {
+        let path = EphemeralPath::new("test_copy_files_with_missing_source");
+        fs::create_dir(path.join("target")).expect("failed to create target directory");
+
+        let operation =
+            Operation::CopyFiles(vec![PathBuf::from("missing.txt")], PathBuf::from("target"));
+
+        let mut router = RouterDouble::new();
+
+        perform_operation(operation, &path, &mut router);
+
+        assert!(router.err_contains(format!(
+            "cannot stat '{}': No such file or directory",
+            Path::new("missing.txt").display()
+        )));
     }
 
     struct RouterDouble {

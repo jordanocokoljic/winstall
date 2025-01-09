@@ -33,7 +33,7 @@ where
             }
             ErrorKind::NotFound => return Err(IoError::NotFound(src.as_ref().to_path_buf())),
             _ => {
-                panic!("unexpected error: {}", e);
+                panic!("copy: unable to open source: {}", e);
             }
         },
     };
@@ -45,7 +45,7 @@ where
                 return Err(IoError::PermissionDenied(dst.as_ref().to_path_buf()))
             }
             _ => {
-                panic!("unexpected error: {}", e);
+                panic!("copy: unable to open destination: {}", e);
             }
         },
     };
@@ -57,12 +57,12 @@ where
         let n = match from.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => n,
-            Err(e) => panic!("unexpected error: {}", e),
+            Err(e) => panic!("copy: read failed: {}", e),
         };
 
         match to.write_all(&buf[..n]) {
             Ok(_) => bytes_copied += n as u64,
-            Err(e) => panic!("unexpected error: {}", e),
+            Err(e) => panic!("copy: write failed: {}", e),
         }
     }
 

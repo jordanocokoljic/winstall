@@ -1,5 +1,5 @@
 use crate::files::{copy, IoError};
-use crate::foundation::{MessageRouter, Operation};
+use crate::foundation::{BackupStrategy, MessageRouter, Operation};
 use std::path::{Path, PathBuf};
 
 const HELP: &str = include_str!("help.txt");
@@ -28,9 +28,9 @@ where
 
                 let destination = container.as_ref().join(&destination).join(filename);
 
-                match copy(source, destination) {
+                match copy(source, destination, BackupStrategy::None) {
                     Ok(_) => (),
-                    Err(IoError::DirectorySource) => {
+                    Err(IoError::DirectoryArgument(_)) => {
                         let msg = format!("omitting directory '{}'", file.display());
                         router.err(Box::new(msg));
                     }
@@ -41,7 +41,7 @@ where
                         );
 
                         router.err(Box::new(msg));
-                    },
+                    }
                     Err(IoError::NotFound(path)) => {
                         let msg = format!(
                             "cannot stat '{}': No such file or directory",

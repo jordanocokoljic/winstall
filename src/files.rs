@@ -1,8 +1,8 @@
 use crate::foundation::BackupStrategy;
 use std::fs::{File, OpenOptions};
-use std::{fs, io};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 #[derive(Debug, PartialEq)]
 pub enum IoError {
@@ -93,21 +93,57 @@ fn open_file_with_backup<P: AsRef<Path>>(path: P, strategy: BackupStrategy) -> i
                         suffix
                     ));
 
-                    dbg!(&path.as_ref());
-                    dbg!(&backup_path);
-
                     match fs::copy(&path, &backup_path) {
                         Ok(_) => OpenOptions::new()
                             .write(true)
                             .truncate(true)
                             .create(true)
                             .open(path),
-                        Err(e) => Err(e),
+                        Err(e) => panic!("copy: unable to create backup: {}", e),
                     }
                 }
                 Err(e) => Err(e),
             }
         }
+        BackupStrategy::Numbered => {
+            match OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => Ok(file),
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                    let mut backup_number = 1;
+
+                    'count: loop  {
+                        let mut backup_path = path.as_ref().to_path_buf();
+                        backup_path.set_file_name(format!(
+                            "{}.~{}~",
+                            path.as_ref().file_name().unwrap().to_string_lossy(),
+                            backup_number
+                        ));
+
+                        if backup_path.exists() {
+                            backup_number += 1;
+                            continue;
+                        }
+
+                        match fs::copy(&path, &backup_path) {
+                            Ok(_) => break 'count,
+                            Err(e) => panic!("copy: unable to create backup: {}", e),
+                        }
+                    };
+
+                    OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .create(true)
+                        .open(path)
+                }
+                Err(e) => Err(e),
+            }
+        },
         _ => todo!(),
     }
 }
@@ -245,6 +281,39 @@ mod tests {
             result.unwrap_err(),
             IoError::NotFound(path.join("file.txt"))
         );
+    }
+
+    #[test]
+    fn test_copy_with_numbered_backups() {
+        let path = EphemeralPath::new("test_copy_with_numbered_backups");
+        create_file_with_content(path.join("first.txt"), "first")
+            .expect("failed to create first file");
+
+        create_file_with_content(path.join("second.txt"), "second")
+            .expect("failed to create second file");
+
+        create_file_with_content(path.join("to.txt"), "fail").expect("failed to create to file");
+
+        let first = copy(
+            path.join("first.txt"),
+            path.join("to.txt"),
+            BackupStrategy::Numbered,
+        );
+
+        assert!(first.is_ok());
+        assert_eq!(read_to_string(path.join("to.txt")).unwrap(), "first");
+        assert_eq!(read_to_string(path.join("to.txt.~1~")).unwrap(), "fail");
+
+        let second = copy(
+            path.join("second.txt"),
+            path.join("to.txt"),
+            BackupStrategy::Numbered,
+        );
+
+        assert!(second.is_ok());
+        assert_eq!(read_to_string(path.join("to.txt")).unwrap(), "second");
+        assert_eq!(read_to_string(path.join("to.txt.~1~")).unwrap(), "fail");
+        assert_eq!(read_to_string(path.join("to.txt.~2~")).unwrap(), "first");
     }
 
     #[test]

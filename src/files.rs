@@ -1,6 +1,6 @@
 use crate::foundation::BackupStrategy;
 use std::fs::{File, OpenOptions};
-use std::io;
+use std::{fs, io};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -76,6 +76,38 @@ fn open_file_with_backup<P: AsRef<Path>>(path: P, strategy: BackupStrategy) -> i
             .truncate(true)
             .create(true)
             .open(path),
+        BackupStrategy::Simple(suffix) => {
+            match OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => Ok(file),
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                    let mut backup_path = path.as_ref().to_path_buf();
+
+                    backup_path.set_file_name(format!(
+                        "{}{}",
+                        path.as_ref().file_name().unwrap().to_string_lossy(),
+                        suffix
+                    ));
+
+                    dbg!(&path.as_ref());
+                    dbg!(&backup_path);
+
+                    match fs::copy(&path, &backup_path) {
+                        Ok(_) => OpenOptions::new()
+                            .write(true)
+                            .truncate(true)
+                            .create(true)
+                            .open(path),
+                        Err(e) => Err(e),
+                    }
+                }
+                Err(e) => Err(e),
+            }
+        }
         _ => todo!(),
     }
 }
@@ -114,6 +146,7 @@ mod tests {
             path.join("new.txt"),
             BackupStrategy::None,
         );
+
         assert!(new.is_ok());
         assert_eq!(read_to_string(path.join("new.txt")).unwrap(), "pass");
 
@@ -122,6 +155,7 @@ mod tests {
             path.join("existing.txt"),
             BackupStrategy::None,
         );
+
         assert!(existing.is_ok());
         assert_eq!(read_to_string(path.join("existing.txt")).unwrap(), "pass");
     }
@@ -136,6 +170,7 @@ mod tests {
             path.join("target"),
             BackupStrategy::None,
         );
+
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -154,6 +189,7 @@ mod tests {
             path.join("target"),
             BackupStrategy::None,
         );
+
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -168,6 +204,7 @@ mod tests {
             "file.txt",
             BackupStrategy::None,
         );
+
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -185,6 +222,7 @@ mod tests {
             "readonly_directory/file.txt",
             BackupStrategy::None,
         );
+
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -201,10 +239,28 @@ mod tests {
             path.join("target"),
             BackupStrategy::None,
         );
+
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
             IoError::NotFound(path.join("file.txt"))
         );
+    }
+
+    #[test]
+    fn test_copy_with_simple_backups() {
+        let path = EphemeralPath::new("test_copy_with_simple_backups");
+        create_file_with_content(path.join("from.txt"), "pass").expect("failed to create file");
+        create_file_with_content(path.join("to.txt"), "fail").expect("failed to create file");
+
+        let result = copy(
+            path.join("from.txt"),
+            path.join("to.txt"),
+            BackupStrategy::Simple(".bak".to_string()),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(read_to_string(path.join("to.txt")).unwrap(), "pass");
+        assert_eq!(read_to_string(path.join("to.txt.bak")).unwrap(), "fail");
     }
 }

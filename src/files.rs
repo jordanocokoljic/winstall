@@ -333,62 +333,100 @@ mod tests {
     }
 
     #[test]
-    fn test_copy_with_existing_backup() {
-        {
-            let path = EphemeralPath::new("test_copy_with_existing_backups_numbered");
+    fn test_copy_with_existing_backup_when_prior_numbered_backups() {
+        let path = EphemeralPath::new("test_copy_with_existing_backup_when_prior_numbered_backups");
 
-            create_file_with_content(path.join("simple_src.txt"), "new")
-                .expect("failed to create numbered source file");
+        create_file_with_content(path.join("simple_src.txt"), "new")
+            .expect("failed to create numbered source file");
 
-            create_file_with_content(path.join("simple_dst.txt"), "old")
-                .expect("failed to create numbered destination file");
+        create_file_with_content(path.join("simple_dst.txt"), "old")
+            .expect("failed to create numbered destination file");
 
-            create_file_with_content(path.join("simple_dst.txt.~1~"), "backup")
-                .expect("failed to create numbered backup file");
+        create_file_with_content(path.join("simple_dst.txt.~1~"), "backup")
+            .expect("failed to create numbered backup file");
 
-            let result = copy(
-                path.join("simple_src.txt"),
-                path.join("simple_dst.txt"),
-                BackupStrategy::Existing(".bak".to_string()),
-            );
+        let result = copy(
+            path.join("simple_src.txt"),
+            path.join("simple_dst.txt"),
+            BackupStrategy::Existing(".bak".to_string()),
+        );
 
-            assert!(result.is_ok());
-            assert_eq!(read_to_string(path.join("simple_dst.txt")).unwrap(), "new");
-            assert_eq!(
-                read_to_string(path.join("simple_dst.txt.~1~")).unwrap(),
-                "backup"
-            );
-            assert_eq!(
-                read_to_string(path.join("simple_dst.txt.~2~")).unwrap(),
-                "old"
-            );
-        }
+        assert!(result.is_ok());
+        assert_eq!(read_to_string(path.join("simple_dst.txt")).unwrap(), "new");
+        assert_eq!(
+            read_to_string(path.join("simple_dst.txt.~1~")).unwrap(),
+            "backup"
+        );
+        assert_eq!(
+            read_to_string(path.join("simple_dst.txt.~2~")).unwrap(),
+            "old"
+        );
+    }
 
-        {
-            let path = EphemeralPath::new("test_copy_with_existing_backups_simple");
+    #[test]
+    fn test_copy_with_existing_backup_when_prior_simple_backups() {
+        let path = EphemeralPath::new("test_copy_with_existing_backup_when_prior_simple_backups");
 
-            create_file_with_content(path.join("simple_src.txt"), "new")
-                .expect("failed to create simple source file");
+        create_file_with_content(path.join("simple_src.txt"), "new")
+            .expect("failed to create simple source file");
 
-            create_file_with_content(path.join("simple_dst.txt"), "old")
-                .expect("failed to create simple destination file");
+        create_file_with_content(path.join("simple_dst.txt"), "old")
+            .expect("failed to create simple destination file");
 
-            create_file_with_content(path.join("simple_dst.txt.bak"), "backup")
-                .expect("failed to create simple backup file");
+        create_file_with_content(path.join("simple_dst.txt.bak"), "backup")
+            .expect("failed to create simple backup file");
 
-            let result = copy(
-                path.join("simple_src.txt"),
-                path.join("simple_dst.txt"),
-                BackupStrategy::Existing(".bak".to_string()),
-            );
+        let result = copy(
+            path.join("simple_src.txt"),
+            path.join("simple_dst.txt"),
+            BackupStrategy::Existing(".bak".to_string()),
+        );
 
-            assert!(result.is_ok());
-            assert_eq!(read_to_string(path.join("simple_dst.txt")).unwrap(), "new");
-            assert_eq!(
-                read_to_string(path.join("simple_dst.txt.bak")).unwrap(),
-                "old"
-            );
-        }
+        assert!(result.is_ok());
+        assert_eq!(read_to_string(path.join("simple_dst.txt")).unwrap(), "new");
+        assert_eq!(
+            read_to_string(path.join("simple_dst.txt.bak")).unwrap(),
+            "old"
+        );
+    }
+
+    #[test]
+    fn test_copy_with_existing_backup_when_prior_mixed_backups() {
+        let path = EphemeralPath::new("test_copy_with_existing_backup_when_prior_mixed_backups");
+
+        create_file_with_content(path.join("src.txt"), "new")
+            .expect("failed to create source file");
+
+        create_file_with_content(path.join("dst.txt"), "old")
+            .expect("failed to create destination file");
+
+        create_file_with_content(path.join("dst.txt.~1~"), "backup")
+            .expect("failed to create numbered backup file");
+
+        let first = copy(
+            path.join("src.txt"),
+            path.join("dst.txt"),
+            BackupStrategy::Existing(".bak".to_string()),
+        );
+
+        assert!(first.is_ok());
+        assert_eq!(read_to_string(path.join("dst.txt")).unwrap(), "new");
+        assert_eq!(read_to_string(path.join("dst.txt.~2~")).unwrap(), "old");
+
+        fs::remove_file(path.join("dst.txt.~1~")).expect("failed to remove numbered backup 1");
+
+        create_file_with_content(path.join("dst.txt"), "old")
+            .expect("failed to re-create destination file");
+
+        let second = copy(
+            path.join("src.txt"),
+            path.join("dst.txt"),
+            BackupStrategy::Existing(".bak".to_string()),
+        );
+
+        assert!(second.is_ok());
+        assert_eq!(read_to_string(path.join("dst.txt")).unwrap(), "new");
+        assert_eq!(read_to_string(path.join("dst.txt.bak")).unwrap(), "old");
     }
 
     #[test]

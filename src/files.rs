@@ -76,75 +76,91 @@ fn open_file_with_backup<P: AsRef<Path>>(path: P, strategy: BackupStrategy) -> i
             .truncate(true)
             .create(true)
             .open(path),
-        BackupStrategy::Simple(suffix) => {
-            match OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .create_new(true)
-                .open(&path)
-            {
-                Ok(file) => Ok(file),
-                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-                    let mut backup_path = path.as_ref().to_path_buf();
+        BackupStrategy::Simple(suffix) => simple_backup(&path, suffix),
+        BackupStrategy::Existing(suffix) => {
+            let mut backup_path = path.as_ref().to_path_buf();
+            backup_path.set_file_name(format!(
+                "{}.~1~",
+                path.as_ref().file_name().unwrap().to_string_lossy(),
+            ));
 
-                    backup_path.set_file_name(format!(
-                        "{}{}",
-                        path.as_ref().file_name().unwrap().to_string_lossy(),
-                        suffix
-                    ));
-
-                    match fs::copy(&path, &backup_path) {
-                        Ok(_) => OpenOptions::new()
-                            .write(true)
-                            .truncate(true)
-                            .create(true)
-                            .open(path),
-                        Err(e) => panic!("copy: unable to create backup: {}", e),
-                    }
-                }
-                Err(e) => Err(e),
+            if backup_path.exists() {
+                numbered_backup(&path)
+            } else {
+                simple_backup(&path, suffix)
             }
         }
-        BackupStrategy::Numbered => {
-            match OpenOptions::new()
+        BackupStrategy::Numbered => numbered_backup(&path),
+    }
+}
+
+fn numbered_backup<P: AsRef<Path>>(path: &P) -> io::Result<File> {
+    match OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(file) => Ok(file),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            let mut backup_number = 1;
+
+            'count: loop {
+                let mut backup_path = path.as_ref().to_path_buf();
+                backup_path.set_file_name(format!(
+                    "{}.~{}~",
+                    path.as_ref().file_name().unwrap().to_string_lossy(),
+                    backup_number
+                ));
+
+                if backup_path.exists() {
+                    backup_number += 1;
+                    continue;
+                }
+
+                match fs::copy(&path, &backup_path) {
+                    Ok(_) => break 'count,
+                    Err(e) => panic!("copy: unable to create backup: {}", e),
+                }
+            }
+
+            OpenOptions::new()
                 .write(true)
                 .truncate(true)
-                .create_new(true)
-                .open(&path)
-            {
-                Ok(file) => Ok(file),
-                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-                    let mut backup_number = 1;
+                .create(true)
+                .open(path)
+        }
+        Err(e) => Err(e),
+    }
+}
 
-                    'count: loop  {
-                        let mut backup_path = path.as_ref().to_path_buf();
-                        backup_path.set_file_name(format!(
-                            "{}.~{}~",
-                            path.as_ref().file_name().unwrap().to_string_lossy(),
-                            backup_number
-                        ));
+fn simple_backup<P: AsRef<Path>>(path: &P, suffix: String) -> io::Result<File> {
+    match OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(file) => Ok(file),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            let mut backup_path = path.as_ref().to_path_buf();
 
-                        if backup_path.exists() {
-                            backup_number += 1;
-                            continue;
-                        }
+            backup_path.set_file_name(format!(
+                "{}{}",
+                path.as_ref().file_name().unwrap().to_string_lossy(),
+                suffix
+            ));
 
-                        match fs::copy(&path, &backup_path) {
-                            Ok(_) => break 'count,
-                            Err(e) => panic!("copy: unable to create backup: {}", e),
-                        }
-                    };
-
-                    OpenOptions::new()
-                        .write(true)
-                        .truncate(true)
-                        .create(true)
-                        .open(path)
-                }
-                Err(e) => Err(e),
+            match fs::copy(&path, &backup_path) {
+                Ok(_) => OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .create(true)
+                    .open(path),
+                Err(e) => panic!("copy: unable to create backup: {}", e),
             }
-        },
-        _ => todo!(),
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -284,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn test_copy_with_numbered_backups() {
+    fn test_copy_with_numbered_backup() {
         let path = EphemeralPath::new("test_copy_with_numbered_backups");
         create_file_with_content(path.join("first.txt"), "first")
             .expect("failed to create first file");
@@ -317,7 +333,66 @@ mod tests {
     }
 
     #[test]
-    fn test_copy_with_simple_backups() {
+    fn test_copy_with_existing_backup() {
+        {
+            let path = EphemeralPath::new("test_copy_with_existing_backups_numbered");
+
+            create_file_with_content(path.join("simple_src.txt"), "new")
+                .expect("failed to create numbered source file");
+
+            create_file_with_content(path.join("simple_dst.txt"), "old")
+                .expect("failed to create numbered destination file");
+
+            create_file_with_content(path.join("simple_dst.txt.~1~"), "backup")
+                .expect("failed to create numbered backup file");
+
+            let result = copy(
+                path.join("simple_src.txt"),
+                path.join("simple_dst.txt"),
+                BackupStrategy::Existing(".bak".to_string()),
+            );
+
+            assert!(result.is_ok());
+            assert_eq!(read_to_string(path.join("simple_dst.txt")).unwrap(), "new");
+            assert_eq!(
+                read_to_string(path.join("simple_dst.txt.~1~")).unwrap(),
+                "backup"
+            );
+            assert_eq!(
+                read_to_string(path.join("simple_dst.txt.~2~")).unwrap(),
+                "old"
+            );
+        }
+
+        {
+            let path = EphemeralPath::new("test_copy_with_existing_backups_simple");
+
+            create_file_with_content(path.join("simple_src.txt"), "new")
+                .expect("failed to create simple source file");
+
+            create_file_with_content(path.join("simple_dst.txt"), "old")
+                .expect("failed to create simple destination file");
+
+            create_file_with_content(path.join("simple_dst.txt.bak"), "backup")
+                .expect("failed to create simple backup file");
+
+            let result = copy(
+                path.join("simple_src.txt"),
+                path.join("simple_dst.txt"),
+                BackupStrategy::Existing(".bak".to_string()),
+            );
+
+            assert!(result.is_ok());
+            assert_eq!(read_to_string(path.join("simple_dst.txt")).unwrap(), "new");
+            assert_eq!(
+                read_to_string(path.join("simple_dst.txt.bak")).unwrap(),
+                "old"
+            );
+        }
+    }
+
+    #[test]
+    fn test_copy_with_simple_backup() {
         let path = EphemeralPath::new("test_copy_with_simple_backups");
         create_file_with_content(path.join("from.txt"), "pass").expect("failed to create file");
         create_file_with_content(path.join("to.txt"), "fail").expect("failed to create file");

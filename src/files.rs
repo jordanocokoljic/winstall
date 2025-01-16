@@ -407,4 +407,26 @@ mod tests {
         assert_eq!(read_to_string(path.join("to.txt")).unwrap(), "pass");
         assert_eq!(read_to_string(path.join("to.txt.bak")).unwrap(), "fail");
     }
+
+    #[test]
+    fn test_copy_returns_same_number_of_bytes_as_fs_copy() {
+        let path = EphemeralPath::new("test_copy_returns_same_number_of_bytes_as_fs");
+        create_file_with_content(path.join("from.txt"), "copy")
+            .expect("failed to create file");
+
+        let fs_result = fs::copy(
+            path.join("from.txt"),
+            path.join("fs_to.txt"),
+        );
+
+        let win_result = copy(
+            path.join("from.txt"),
+            path.join("win_to.txt"),
+            BackupStrategy::None
+        );
+
+        assert!(fs_result.is_ok());
+        assert!(win_result.is_ok());
+        assert_eq!(fs_result.unwrap(), win_result.unwrap());
+    }
 }

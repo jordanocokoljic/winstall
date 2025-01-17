@@ -1,8 +1,8 @@
 use crate::foundation::BackupStrategy;
 use std::fs::{File, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Seek};
 use std::path::{Path, PathBuf};
-use std::{fs, io};
+use std::io;
 
 #[derive(Debug, PartialEq)]
 pub enum IoError {
@@ -50,51 +50,13 @@ where
         },
     };
 
-    let mut buf = [0u8; 1024];
-    let mut bytes_copied = 0u64;
-
-    loop {
-        let n = match from.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(e) => panic!("copy: read failed: {}", e),
-        };
-
-        match to.write_all(&buf[..n]) {
-            Ok(_) => bytes_copied += n as u64,
-            Err(e) => panic!("copy: write failed: {}", e),
-        }
+    match io::copy(&mut from, &mut to) {
+        Ok(bytes_copied) => Ok(bytes_copied),
+        Err(e) => panic!("copy: unable to copy: {}", e),
     }
-
-    Ok(bytes_copied)
 }
 
 fn open_file_with_backup<P: AsRef<Path>>(path: P, strategy: BackupStrategy) -> io::Result<File> {
-    match strategy {
-        BackupStrategy::None => OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(path),
-        BackupStrategy::Simple(suffix) => simple_backup(&path, suffix),
-        BackupStrategy::Existing(suffix) => {
-            let mut backup_path = path.as_ref().to_path_buf();
-            backup_path.set_file_name(format!(
-                "{}.~1~",
-                path.as_ref().file_name().unwrap().to_string_lossy(),
-            ));
-
-            if backup_path.exists() {
-                numbered_backup(&path)
-            } else {
-                simple_backup(&path, suffix)
-            }
-        }
-        BackupStrategy::Numbered => numbered_backup(&path),
-    }
-}
-
-fn numbered_backup<P: AsRef<Path>>(path: &P) -> io::Result<File> {
     match OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -102,64 +64,113 @@ fn numbered_backup<P: AsRef<Path>>(path: &P) -> io::Result<File> {
         .open(&path)
     {
         Ok(file) => Ok(file),
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-            let mut backup_number = 1;
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => match strategy {
+            BackupStrategy::None => no_backup(&path),
+            BackupStrategy::Numbered => numbered_backup(&path),
+            BackupStrategy::Simple(suffix) => simple_backup(&path, suffix),
+            BackupStrategy::Existing(suffix) => existing_backup(&path, suffix),
+        },
+        Err(e) => Err(e),
+    }
+}
 
-            'count: loop {
-                let mut backup_path = path.as_ref().to_path_buf();
-                backup_path.set_file_name(format!(
-                    "{}.~{}~",
-                    path.as_ref().file_name().unwrap().to_string_lossy(),
-                    backup_number
-                ));
+fn no_backup<P: AsRef<Path>>(path: P) -> io::Result<File> {
+    OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(path)
+}
 
-                if backup_path.exists() {
-                    backup_number += 1;
-                    continue;
-                }
+fn numbered_backup<P: AsRef<Path>>(path: &P) -> io::Result<File> {
+    let mut src = match OpenOptions::new().read(true).write(true).open(&path) {
+        Ok(file) => file,
+        Err(e) => return Err(e),
+    };
 
-                match fs::copy(&path, &backup_path) {
-                    Ok(_) => break 'count,
-                    Err(e) => panic!("copy: unable to create backup: {}", e),
-                }
+    let mut backup_number = 1;
+
+    loop {
+        let mut backup_path = path.as_ref().to_path_buf();
+        backup_path.set_file_name(format!(
+            "{}.~{}~",
+            path.as_ref().file_name().unwrap().to_string_lossy(),
+            backup_number
+        ));
+
+        let mut dst = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup_path)
+        {
+            Ok(file) => file,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                backup_number += 1;
+                continue;
             }
+            Err(e) => return Err(e),
+        };
 
-            OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .open(path)
+        match io::copy(&mut src, &mut dst) {
+            Ok(_) => break,
+            Err(e) => return Err(e),
         }
+    }
+
+    match src.rewind() {
+        Ok(_) => Ok(src),
         Err(e) => Err(e),
     }
 }
 
 fn simple_backup<P: AsRef<Path>>(path: &P, suffix: String) -> io::Result<File> {
-    match OpenOptions::new()
+    let mut src = open_backup_source(&path)?;
+
+    let mut backup_path = path.as_ref().to_path_buf();
+    backup_path.set_file_name(format!(
+        "{}{}",
+        path.as_ref().file_name().unwrap().to_string_lossy(),
+        suffix
+    ));
+
+    let mut dst = match OpenOptions::new()
         .write(true)
+        .create(true)
         .truncate(true)
-        .create_new(true)
-        .open(&path)
+        .open(&backup_path)
     {
+        Ok(file) => file,
+        Err(e) => return Err(e),
+    };
+
+    match io::copy(&mut src, &mut dst) {
+        Ok(_) => (),
+        Err(e) => return Err(e),
+    };
+
+    match src.rewind() {
+        Ok(_) => Ok(src),
+        Err(e) => Err(e),
+    }
+}
+
+fn existing_backup<P: AsRef<Path>>(path: &P, suffix: String) -> io::Result<File> {
+    let mut backup_path = path.as_ref().to_path_buf();
+    backup_path.set_file_name(format!(
+        "{}.~1~",
+        path.as_ref().file_name().unwrap().to_string_lossy(),
+    ));
+
+    if backup_path.exists() {
+        numbered_backup(&path)
+    } else {
+        simple_backup(&path, suffix)
+    }
+}
+
+fn open_backup_source<P: AsRef<Path>>(path: P) -> io::Result<File> {
+    match OpenOptions::new().read(true).write(true).open(&path) {
         Ok(file) => Ok(file),
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-            let mut backup_path = path.as_ref().to_path_buf();
-
-            backup_path.set_file_name(format!(
-                "{}{}",
-                path.as_ref().file_name().unwrap().to_string_lossy(),
-                suffix
-            ));
-
-            match fs::copy(&path, &backup_path) {
-                Ok(_) => OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open(path),
-                Err(e) => panic!("copy: unable to create backup: {}", e),
-            }
-        }
         Err(e) => Err(e),
     }
 }

@@ -9,8 +9,8 @@ pub enum Operation {
 pub enum BackupStrategy {
     None,
     Numbered,
-    Existing(String),
     Simple(String),
+    Existing(String),
 }
 
 pub trait MessageRouter {

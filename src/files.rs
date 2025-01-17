@@ -1,8 +1,8 @@
 use crate::foundation::BackupStrategy;
 use std::fs::{File, OpenOptions};
+use std::io;
 use std::io::{ErrorKind, Seek};
 use std::path::{Path, PathBuf};
-use std::io;
 
 #[derive(Debug, PartialEq)]
 pub enum IoError {

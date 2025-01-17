@@ -83,11 +83,7 @@ fn no_backup<P: AsRef<Path>>(path: P) -> io::Result<File> {
 }
 
 fn numbered_backup<P: AsRef<Path>>(path: &P) -> io::Result<File> {
-    let mut src = match OpenOptions::new().read(true).write(true).open(&path) {
-        Ok(file) => file,
-        Err(e) => return Err(e),
-    };
-
+    let mut src = open_backup_source(&path)?;
     let mut backup_number = 1;
 
     loop {

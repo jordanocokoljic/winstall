@@ -177,9 +177,10 @@ pub mod testing {
     use std::io::Write;
     use std::path::Path;
 
-    pub fn create_file_with_content(path: impl AsRef<Path>, content: &str) -> io::Result<()> {
+    pub fn create_file_with_content(path: impl AsRef<Path>, content: &str) -> io::Result<File> {
         let mut file = File::create(path)?;
-        file.write_all(content.as_bytes())
+        file.write_all(content.as_bytes())?;
+        Ok(file)
     }
 }
 

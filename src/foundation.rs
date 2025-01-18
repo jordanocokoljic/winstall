@@ -2,7 +2,11 @@
 pub enum Operation {
     ShowHelp,
     ShowVersion,
-    CopyFiles(Vec<std::path::PathBuf>, std::path::PathBuf),
+    CopyFiles {
+        preserve_timestamps: bool,
+        files: Vec<std::path::PathBuf>,
+        directory: std::path::PathBuf,
+    },
     CreateDirectories(Vec<std::path::PathBuf>),
 }
 

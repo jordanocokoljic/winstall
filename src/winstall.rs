@@ -1,6 +1,7 @@
 use crate::files::{copy, IoError};
 use crate::foundation::{BackupStrategy, MessageRouter, Operation};
 use std::fs;
+use std::fs::{FileTimes, OpenOptions};
 use std::path::{Path, PathBuf};
 
 const HELP: &str = include_str!("help.txt");
@@ -14,9 +15,19 @@ where
     match operation {
         Operation::ShowHelp => router.out(Box::new(HELP)),
         Operation::ShowVersion => router.out(Box::new(VERSION)),
-        Operation::CopyFiles(files, destination) => {
+        Operation::CopyFiles {
+            preserve_timestamps,
+            files,
+            directory,
+        } => {
             for file in files {
                 let source = container.as_ref().join(&file);
+
+                let file_times = if preserve_timestamps {
+                    try_get_file_times(&source)
+                } else {
+                    None
+                };
 
                 let filename = match file.file_name() {
                     Some(filename) => filename,
@@ -27,10 +38,12 @@ where
                     }
                 };
 
-                let destination = container.as_ref().join(&destination).join(filename);
+                let destination = container.as_ref().join(&directory).join(filename);
 
-                match copy(source, destination, BackupStrategy::None) {
-                    Ok(_) => (),
+                match copy(&source, &destination, BackupStrategy::None) {
+                    Ok(_) => {
+                        try_set_file_times(&destination, file_times);
+                    }
                     Err(IoError::DirectoryArgument(_)) => {
                         let msg = format!("omitting directory '{}'", file.display());
                         router.err(Box::new(msg));
@@ -76,6 +89,45 @@ where
     }
 }
 
+fn try_get_file_times<P: AsRef<Path>>(path: P) -> Option<FileTimes> {
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return None,
+        Err(e) => panic!(
+            "failed to get metadata for '{}': {}",
+            path.as_ref().display(),
+            e
+        ),
+    };
+
+    let accessed = metadata
+        .accessed()
+        .expect("failed to get last accessed time");
+
+    let modified = metadata
+        .modified()
+        .expect("failed to get last modified time");
+
+    Some(
+        FileTimes::new()
+            .set_accessed(accessed)
+            .set_modified(modified),
+    )
+}
+
+fn try_set_file_times<P: AsRef<Path>>(path: P, ft: Option<FileTimes>) {
+    ft.map(|ft| {
+        let file = OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("failed to open file to update timestamps");
+
+        file.set_times(ft)
+            .expect("failed to update file timestamps");
+    });
+}
+
 fn strip_prefix<F: AsRef<Path>, P: AsRef<Path>>(file: F, prefix: P) -> PathBuf {
     file.as_ref()
         .strip_prefix(prefix)
@@ -92,7 +144,7 @@ mod tests {
     use std::fmt::{Debug, Display, Formatter};
     use std::fs::File;
     use std::path::{Path, PathBuf};
-    use std::{env, fs};
+    use std::{env, fs, thread, time};
 
     #[test]
     fn test_show_help() {
@@ -117,10 +169,11 @@ mod tests {
 
         let mut router = RouterDouble::new();
 
-        let operation = Operation::CopyFiles(
-            vec![PathBuf::from("one.txt"), PathBuf::from("two.txt")],
-            PathBuf::from("target"),
-        );
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: false,
+            files: vec![PathBuf::from("one.txt"), PathBuf::from("two.txt")],
+            directory: PathBuf::from("target"),
+        };
 
         perform_operation(operation, &path, &mut router);
 
@@ -147,8 +200,11 @@ mod tests {
 
         let mut router = RouterDouble::new();
 
-        let operation =
-            Operation::CopyFiles(vec![PathBuf::from("source")], PathBuf::from("target"));
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: false,
+            files: vec![PathBuf::from("source")],
+            directory: PathBuf::from("target"),
+        };
 
         perform_operation(operation, &path, &mut router);
 
@@ -160,12 +216,13 @@ mod tests {
         let cwd = env::current_dir().expect("failed to get current directory");
         let mut router = RouterDouble::new();
 
-        let operation = Operation::CopyFiles(
-            vec![Path::new("readonly_directory")
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: true,
+            files: vec![Path::new("readonly_directory")
                 .join("file.txt")
                 .to_path_buf()],
-            PathBuf::from("target"),
-        );
+            directory: PathBuf::from("target"),
+        };
 
         perform_operation(operation, &cwd, &mut router);
 
@@ -183,10 +240,11 @@ mod tests {
         let cwd = env::current_dir().expect("failed to get current directory");
         let mut router = RouterDouble::new();
 
-        let operation = Operation::CopyFiles(
-            vec![path.join("from.txt")],
-            PathBuf::from("readonly_directory"),
-        );
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: true,
+            files: vec![path.join("from.txt")],
+            directory: PathBuf::from("readonly_directory"),
+        };
 
         perform_operation(operation, &cwd, &mut router);
 
@@ -198,14 +256,15 @@ mod tests {
 
     #[test]
     fn test_copy_files_with_invalid_source_filename() {
-        let operation = Operation::CopyFiles(
-            vec![
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: false,
+            files: vec![
                 PathBuf::from(".."),
                 PathBuf::from("/"),
                 PathBuf::from("C:\\"),
             ],
-            PathBuf::from("target"),
-        );
+            directory: PathBuf::from("target"),
+        };
 
         let mut router = RouterDouble::new();
 
@@ -221,8 +280,11 @@ mod tests {
         let path = EphemeralPath::new("test_copy_files_with_missing_source");
         fs::create_dir(path.join("target")).expect("failed to create target directory");
 
-        let operation =
-            Operation::CopyFiles(vec![PathBuf::from("missing.txt")], PathBuf::from("target"));
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: false,
+            files: vec![PathBuf::from("missing.txt")],
+            directory: PathBuf::from("target"),
+        };
 
         let mut router = RouterDouble::new();
 
@@ -274,6 +336,78 @@ mod tests {
         assert!(path.join("one/two/three").exists());
         assert!(path.join("four/five/six").exists());
         assert!(path.join("seven/eight/nine").exists());
+    }
+
+    #[test]
+    fn test_without_preserved_timestamps_copy_updates_timestamps() {
+        let path = EphemeralPath::new("test_without_preserved_timestamps_copy_updates_timestamps");
+        fs::create_dir(path.join("target")).expect("failed to create target directory");
+        create_file_with_content(path.join("one.txt"), "one").expect("failed to create file");
+
+        let pre_meta = fs::metadata(path.join("one.txt")).expect("failed to get metadata");
+        let original_atime = pre_meta.accessed().expect("failed to get accessed time");
+        let original_mtime = pre_meta.modified().expect("failed to get modified time");
+
+        thread::sleep(time::Duration::from_millis(50));
+
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: false,
+            files: vec![PathBuf::from("one.txt")],
+            directory: PathBuf::from("target"),
+        };
+
+        let mut router = RouterDouble::new();
+
+        perform_operation(operation, &path, &mut router);
+
+        let post_meta = fs::metadata(path.join("target/one.txt")).expect("failed to get metadata");
+        let post_atime = post_meta.accessed().expect("failed to get accessed time");
+        let post_mtime = post_meta.modified().expect("failed to get modified time");
+
+        assert!(post_atime > original_atime);
+        assert!(post_mtime > original_mtime);
+    }
+
+    #[test]
+    fn test_with_preserved_timestamps_copy_does_not_update_timestamps() {
+        let path =
+            EphemeralPath::new("test_with_preserved_timestamps_copy_does_not_update_timestamps");
+
+        fs::create_dir(path.join("target")).expect("failed to create target directory");
+        let from =
+            create_file_with_content(path.join("one.txt"), "one").expect("failed to create file");
+
+        let pre = from.metadata().expect("failed to get metadata");
+        let original_atime = pre.accessed().expect("failed to get accessed time");
+        let original_mtime = pre.modified().expect("failed to get modified time");
+
+        let operation = Operation::CopyFiles {
+            preserve_timestamps: true,
+            files: vec![PathBuf::from("one.txt")],
+            directory: PathBuf::from("target"),
+        };
+
+        let mut router = RouterDouble::new();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        perform_operation(operation, &path, &mut router);
+
+        assert!(router.err_is_empty());
+
+        let post = fs::metadata(path.join("target/one.txt")).expect("failed to get metadata");
+        let post_atime = post.accessed().expect("failed to get accessed time");
+        let post_mtime = post.modified().expect("failed to get modified time");
+
+        assert_eq!(
+            original_atime, post_atime,
+            "last accessed time should not have changed"
+        );
+
+        assert_eq!(
+            original_mtime, post_mtime,
+            "last modified time should not have changed"
+        );
     }
 
     struct RouterDouble {

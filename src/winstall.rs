@@ -1,7 +1,6 @@
 use crate::files::{copy, IoError};
 use crate::foundation::{BackupStrategy, MessageRouter, Operation};
 use std::fs;
-use std::fs::{FileTimes, OpenOptions};
 use std::path::{Path, PathBuf};
 
 const HELP: &str = include_str!("help.txt");
@@ -23,12 +22,6 @@ where
             for file in files {
                 let source = container.as_ref().join(&file);
 
-                let file_times = if preserve_timestamps {
-                    try_get_file_times(&source)
-                } else {
-                    None
-                };
-
                 let filename = match file.file_name() {
                     Some(filename) => filename,
                     None => {
@@ -40,10 +33,13 @@ where
 
                 let destination = container.as_ref().join(&directory).join(filename);
 
-                match copy(&source, &destination, BackupStrategy::None) {
-                    Ok(_) => {
-                        try_set_file_times(&destination, file_times);
-                    }
+                match copy(
+                    &source,
+                    &destination,
+                    preserve_timestamps,
+                    BackupStrategy::None,
+                ) {
+                    Ok(_) => (),
                     Err(IoError::DirectoryArgument(_)) => {
                         let msg = format!("omitting directory '{}'", file.display());
                         router.err(Box::new(msg));
@@ -87,45 +83,6 @@ where
             }
         }
     }
-}
-
-fn try_get_file_times<P: AsRef<Path>>(path: P) -> Option<FileTimes> {
-    let metadata = match fs::metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return None,
-        Err(e) => panic!(
-            "failed to get metadata for '{}': {}",
-            path.as_ref().display(),
-            e
-        ),
-    };
-
-    let accessed = metadata
-        .accessed()
-        .expect("failed to get last accessed time");
-
-    let modified = metadata
-        .modified()
-        .expect("failed to get last modified time");
-
-    Some(
-        FileTimes::new()
-            .set_accessed(accessed)
-            .set_modified(modified),
-    )
-}
-
-fn try_set_file_times<P: AsRef<Path>>(path: P, ft: Option<FileTimes>) {
-    ft.map(|ft| {
-        let file = OpenOptions::new()
-            .write(true)
-            .open(path)
-            .expect("failed to open file to update timestamps");
-
-        file.set_times(ft)
-            .expect("failed to update file timestamps");
-    });
 }
 
 fn strip_prefix<F: AsRef<Path>, P: AsRef<Path>>(file: F, prefix: P) -> PathBuf {

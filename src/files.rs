@@ -1,5 +1,5 @@
 use crate::foundation::BackupStrategy;
-use std::fs::{File, OpenOptions};
+use std::fs::{File, FileTimes, OpenOptions};
 use std::io;
 use std::io::{ErrorKind, Seek};
 use std::path::{Path, PathBuf};
@@ -12,7 +12,12 @@ pub enum IoError {
 }
 
 // TODO(jordan): There are still a lot of panic's in here.
-pub fn copy<S, D>(src: S, dst: D, backup: BackupStrategy) -> Result<u64, IoError>
+pub fn copy<S, D>(
+    src: S,
+    dst: D,
+    preserve_timestamps: bool,
+    backup: BackupStrategy,
+) -> Result<u64, IoError>
 where
     S: AsRef<Path>,
     D: AsRef<Path>,
@@ -25,8 +30,21 @@ where
         return Err(IoError::DirectoryArgument(dst.as_ref().to_path_buf()));
     }
 
+    let mut file_times: Option<FileTimes> = None;
+
     let mut from = match OpenOptions::new().read(true).open(&src) {
-        Ok(file) => file,
+        Ok(file) => {
+            if preserve_timestamps {
+                let meta = file.metadata().expect("failed to get file metadata");
+                file_times = Some(
+                    FileTimes::new()
+                        .set_accessed(meta.accessed().expect("failed to get last accessed time"))
+                        .set_modified(meta.modified().expect("failed to get last modified time")),
+                );
+            }
+
+            file
+        }
         Err(e) => match e.kind() {
             ErrorKind::PermissionDenied => {
                 return Err(IoError::PermissionDenied(src.as_ref().to_path_buf()))
@@ -51,7 +69,19 @@ where
     };
 
     match io::copy(&mut from, &mut to) {
-        Ok(bytes_copied) => Ok(bytes_copied),
+        Ok(bytes_copied) => {
+            file_times.map(|ft| {
+                let file = OpenOptions::new()
+                    .write(true)
+                    .open(&dst)
+                    .expect("failed to open file to update timestamps");
+
+                file.set_times(ft)
+                    .expect("failed to update file timestamps");
+            });
+
+            Ok(bytes_copied)
+        }
         Err(e) => panic!("copy: unable to copy: {}", e),
     }
 }
@@ -190,10 +220,10 @@ mod tests {
     use crate::files::{copy, IoError};
     use crate::foundation::BackupStrategy;
     use crate::ghost::EphemeralPath;
-    use std::fs;
     use std::fs::read_to_string;
     use std::fs::File;
     use std::path::PathBuf;
+    use std::{fs, thread, time};
 
     #[test]
     fn test_copy() {
@@ -204,6 +234,7 @@ mod tests {
         let new = copy(
             path.join("file.txt"),
             path.join("new.txt"),
+            false,
             BackupStrategy::None,
         );
 
@@ -213,6 +244,7 @@ mod tests {
         let existing = copy(
             path.join("file.txt"),
             path.join("existing.txt"),
+            false,
             BackupStrategy::None,
         );
 
@@ -228,6 +260,7 @@ mod tests {
         let result = copy(
             path.join("source"),
             path.join("target"),
+            false,
             BackupStrategy::None,
         );
 
@@ -247,6 +280,7 @@ mod tests {
         let result = copy(
             path.join("source"),
             path.join("target"),
+            false,
             BackupStrategy::None,
         );
 
@@ -262,6 +296,7 @@ mod tests {
         let result = copy(
             "readonly_directory/file.txt",
             "file.txt",
+            false,
             BackupStrategy::None,
         );
 
@@ -280,6 +315,7 @@ mod tests {
         let result = copy(
             path.join("file.txt"),
             "readonly_directory/file.txt",
+            false,
             BackupStrategy::None,
         );
 
@@ -297,6 +333,7 @@ mod tests {
         let result = copy(
             path.join("file.txt"),
             path.join("target"),
+            false,
             BackupStrategy::None,
         );
 
@@ -321,6 +358,7 @@ mod tests {
         let first = copy(
             path.join("first.txt"),
             path.join("to.txt"),
+            false,
             BackupStrategy::Numbered,
         );
 
@@ -331,6 +369,7 @@ mod tests {
         let second = copy(
             path.join("second.txt"),
             path.join("to.txt"),
+            false,
             BackupStrategy::Numbered,
         );
 
@@ -356,6 +395,7 @@ mod tests {
         let result = copy(
             path.join("simple_src.txt"),
             path.join("simple_dst.txt"),
+            false,
             BackupStrategy::Existing(".bak".to_string()),
         );
 
@@ -387,6 +427,7 @@ mod tests {
         let result = copy(
             path.join("simple_src.txt"),
             path.join("simple_dst.txt"),
+            false,
             BackupStrategy::Existing(".bak".to_string()),
         );
 
@@ -414,6 +455,7 @@ mod tests {
         let first = copy(
             path.join("src.txt"),
             path.join("dst.txt"),
+            false,
             BackupStrategy::Existing(".bak".to_string()),
         );
 
@@ -429,6 +471,7 @@ mod tests {
         let second = copy(
             path.join("src.txt"),
             path.join("dst.txt"),
+            false,
             BackupStrategy::Existing(".bak".to_string()),
         );
 
@@ -446,6 +489,7 @@ mod tests {
         let result = copy(
             path.join("from.txt"),
             path.join("to.txt"),
+            false,
             BackupStrategy::Simple(".bak".to_string()),
         );
 
@@ -464,11 +508,86 @@ mod tests {
         let win_result = copy(
             path.join("from.txt"),
             path.join("win_to.txt"),
+            false,
             BackupStrategy::None,
         );
 
         assert!(fs_result.is_ok());
         assert!(win_result.is_ok());
         assert_eq!(fs_result.unwrap(), win_result.unwrap());
+    }
+
+    #[test]
+    fn test_copy_when_preserving_timestamps() {
+        let path = EphemeralPath::new("test_copy_when_preserving_timestamps");
+
+        let from =
+            create_file_with_content(path.join("from.txt"), ":)").expect("failed to create file");
+
+        let pre_meta = from.metadata().expect("failed to get metadata");
+        let original_atime = pre_meta.accessed().expect("failed to get accessed time");
+        let original_mtime = pre_meta.modified().expect("failed to get modified time");
+
+        thread::sleep(time::Duration::from_millis(50));
+
+        let result = copy(
+            path.join("from.txt"),
+            path.join("to.txt"),
+            true,
+            BackupStrategy::None,
+        );
+
+        assert!(result.is_ok());
+
+        let post_meta = fs::metadata(path.join("to.txt")).expect("failed to get metadata");
+        let post_atime = post_meta.accessed().expect("failed to get accessed time");
+        let post_mtime = post_meta.modified().expect("failed to get modified time");
+
+        assert_eq!(
+            original_atime, post_atime,
+            "last accessed time should not have changed"
+        );
+
+        assert_eq!(
+            original_mtime, post_mtime,
+            "last modified time should not have changed"
+        );
+    }
+
+    #[test]
+    fn test_copy_when_not_preserving_timestamps() {
+        let path = EphemeralPath::new("test_copy_when_not_preserving_timestamps");
+
+        let from =
+            create_file_with_content(path.join("from.txt"), ":)").expect("failed to create file");
+
+        let pre_meta = from.metadata().expect("failed to get metadata");
+        let original_atime = pre_meta.accessed().expect("failed to get accessed time");
+        let original_mtime = pre_meta.modified().expect("failed to get modified time");
+
+        thread::sleep(time::Duration::from_millis(50));
+
+        let result = copy(
+            path.join("from.txt"),
+            path.join("to.txt"),
+            false,
+            BackupStrategy::None,
+        );
+
+        assert!(result.is_ok());
+
+        let post_meta = fs::metadata(path.join("to.txt")).expect("failed to get metadata");
+        let post_atime = post_meta.accessed().expect("failed to get accessed time");
+        let post_mtime = post_meta.modified().expect("failed to get modified time");
+
+        assert!(
+            original_atime < post_atime,
+            "last accessed time should have changed"
+        );
+
+        assert!(
+            original_mtime < post_mtime,
+            "last modified time should have changed"
+        );
     }
 }

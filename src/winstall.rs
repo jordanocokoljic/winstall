@@ -1,5 +1,6 @@
 use crate::files::{copy, IoError};
 use crate::foundation::{BackupStrategy, MessageRouter, Operation};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const HELP: &str = include_str!("help.txt");
@@ -50,6 +51,25 @@ where
 
                         router.err(Box::new(msg));
                     }
+                }
+            }
+        }
+        Operation::CreateDirectories(directories) => {
+            for directory in directories {
+                let mut aggregate = container.as_ref().to_path_buf();
+
+                for component in directory.components() {
+                    let target = aggregate.join(component);
+
+                    match fs::create_dir(&target) {
+                        Ok(_) => (),
+                        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
+                        Err(e) => {
+                            panic!("failed to create directory '{}': {}", target.display(), e);
+                        }
+                    }
+
+                    aggregate = target;
                 }
             }
         }
@@ -212,6 +232,48 @@ mod tests {
             "cannot stat '{}': No such file or directory",
             Path::new("missing.txt").display()
         )));
+    }
+
+    #[test]
+    fn test_create_directories() {
+        let path = EphemeralPath::new("test_create_directories");
+
+        let operation = Operation::CreateDirectories(vec![
+            PathBuf::from("one/two/three"),
+            PathBuf::from("four/five/six"),
+            PathBuf::from("seven/eight/nine"),
+        ]);
+
+        let mut router = RouterDouble::new();
+
+        perform_operation(operation, &path, &mut router);
+
+        assert!(router.err_is_empty());
+        assert!(path.join("one/two/three").exists());
+        assert!(path.join("four/five/six").exists());
+        assert!(path.join("seven/eight/nine").exists());
+    }
+
+    #[test]
+    fn test_create_directories_with_existing_directories() {
+        let path = EphemeralPath::new("test_create_directories_with_existing_directories");
+        fs::create_dir_all(path.join("one/two")).expect("failed to create directory");
+        fs::create_dir_all(path.join("four")).expect("failed to create directory");
+
+        let operation = Operation::CreateDirectories(vec![
+            PathBuf::from("one/two/three"),
+            PathBuf::from("four/five/six"),
+            PathBuf::from("seven/eight/nine"),
+        ]);
+
+        let mut router = RouterDouble::new();
+
+        perform_operation(operation, &path, &mut router);
+
+        assert!(router.err_is_empty());
+        assert!(path.join("one/two/three").exists());
+        assert!(path.join("four/five/six").exists());
+        assert!(path.join("seven/eight/nine").exists());
     }
 
     struct RouterDouble {

@@ -3,6 +3,7 @@ pub enum Operation {
     ShowHelp,
     ShowVersion,
     CopyFiles(Vec<std::path::PathBuf>, std::path::PathBuf),
+    CreateDirectories(Vec<std::path::PathBuf>),
 }
 
 #[derive(PartialEq, Debug)]

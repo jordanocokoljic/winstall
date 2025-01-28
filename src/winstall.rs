@@ -77,6 +77,27 @@ impl Operation {
                                     };
                                 }
                             }
+                            Backup::Simple(ext) => {
+                                let backup_name =
+                                    format!("{}.{}", p.file_name().unwrap().to_string_lossy(), ext);
+
+                                let backup_path = p.with_file_name(backup_name);
+
+                                return match OpenOptions::new()
+                                    .create(true)
+                                    .truncate(true)
+                                    .write(true)
+                                    .open(&backup_path)
+                                {
+                                    Ok(mut backup) => {
+                                        io::copy(&mut file, &mut backup)?;
+                                        file.set_len(0)?;
+                                        file.rewind()?;
+                                        Ok(file)
+                                    }
+                                    Err(e) => Err(e),
+                                };
+                            }
                             _ => todo!(),
                         },
                         Err(e) => Err(e),
@@ -389,6 +410,44 @@ mod tests {
         assert_eq!(
             read_to_string(root.join("destination/a.txt.~2~")).unwrap(),
             "old"
+        );
+    }
+
+    #[test]
+    fn copy_files_backs_up_existing_files_if_backup_is_simple() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_backs_up_existing_files_if_backup_is_numbered")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new").expect("unable to create a.txt");
+
+        new_file_with_content(root.join("destination/a.txt"), "old")
+            .expect("unable to create destination/a.txt");
+
+        new_file_with_content(root.join("destination/a.txt.bak"), "veryold")
+            .expect("unable to create destination/a.txt.bak");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::Simple("bak".to_string()),
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt")).unwrap(),
+            "new",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt.bak")).unwrap(),
+            "old",
         );
     }
 

@@ -37,12 +37,47 @@ impl Operation {
                 ..
             } => {
                 let open_destination = |p: &Path| -> io::Result<File> {
-                     match OpenOptions::new().read(true).write(true).create(true).open(&p) {
-                        Ok(file) => {
-                            match backup {
-                                Backup::None => Ok(file),
-                                _ => todo!()
+                    match OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .open(&p)
+                    {
+                        Ok(mut file) => match backup {
+                            Backup::None => Ok(file),
+                            Backup::Numbered => {
+                                let mut backup_count = 1;
+
+                                loop {
+                                    let backup_name = format!(
+                                        "{}.~{}~",
+                                        p.file_name().unwrap().to_string_lossy(),
+                                        backup_count
+                                    );
+
+                                    let backup_path = p.with_file_name(backup_name);
+
+                                    match OpenOptions::new()
+                                        .create_new(true)
+                                        .write(true)
+                                        .open(&backup_path)
+                                    {
+                                        Ok(mut backup) => {
+                                            io::copy(&mut file, &mut backup)?;
+                                            file.set_len(0)?;
+                                            file.rewind()?;
+                                            return Ok(file);
+                                        }
+                                        Err(e) => match e.kind() {
+                                            ErrorKind::AlreadyExists => {
+                                                backup_count += 1;
+                                            }
+                                            _ => return Err(e),
+                                        },
+                                    };
+                                }
                             }
+                            _ => todo!(),
                         },
                         Err(e) => Err(e),
                     }
@@ -322,8 +357,12 @@ mod tests {
 
         fs::create_dir(root.join("destination")).expect("unable to create destination");
         new_file_with_content(root.join("a.txt"), "new").expect("unable to create a.txt");
+
         new_file_with_content(root.join("destination/a.txt"), "old")
             .expect("unable to create destination/a.txt");
+
+        new_file_with_content(root.join("destination/a.txt.~1~"), "veryold")
+            .expect("unable to create destination/a.txt.~1~");
 
         let operation = Operation::CopyFiles {
             files: vec![PathBuf::from("a.txt")],
@@ -336,12 +375,19 @@ mod tests {
         operation.execute(&root, &mut err_out);
 
         assert!(err_out.is_empty());
+
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
             "new"
         );
+
         assert_eq!(
             read_to_string(root.join("destination/a.txt.~1~")).unwrap(),
+            "veryold"
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt.~2~")).unwrap(),
             "old"
         );
     }

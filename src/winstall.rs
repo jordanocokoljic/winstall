@@ -11,6 +11,79 @@ pub enum Backup {
     Existing(String),
 }
 
+impl Backup {
+    pub fn open_for(&self, p: impl AsRef<Path>, file: File) -> io::Result<File> {
+        fn numbered(p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
+            let mut backup_count = 1;
+
+            loop {
+                let backup_name = format!(
+                    "{}.~{}~",
+                    p.as_ref().file_name().unwrap().to_string_lossy(),
+                    backup_count
+                );
+
+                let backup_path = p.as_ref().with_file_name(backup_name);
+
+                match OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(&backup_path)
+                {
+                    Ok(mut backup) => {
+                        io::copy(&mut file, &mut backup)?;
+                        file.set_len(0)?;
+                        file.rewind()?;
+                        return Ok(file);
+                    }
+                    Err(e) => match e.kind() {
+                        ErrorKind::AlreadyExists => {
+                            backup_count += 1;
+                        }
+                        _ => return Err(e),
+                    },
+                };
+            }
+        }
+
+        fn simple(ext: impl AsRef<str>, p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
+            let backup_name = format!(
+                "{}.{}",
+                p.as_ref().file_name().unwrap().to_string_lossy(),
+                ext.as_ref()
+            );
+
+            let backup_path = p.as_ref().with_file_name(backup_name);
+
+            match OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&backup_path)
+            {
+                Ok(mut backup) => {
+                    io::copy(&mut file, &mut backup)?;
+                    file.set_len(0)?;
+                    file.rewind()?;
+                    Ok(file)
+                }
+                Err(e) => Err(e),
+            }
+        }
+
+        fn existing(ext: impl AsRef<str>, p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
+            todo!()
+        }
+
+        match self {
+            Backup::None => Ok(file),
+            Backup::Numbered => numbered(p, file),
+            Backup::Simple(ext) => simple(ext, p, file),
+            Backup::Existing(ext) => existing(ext, p, file),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum Operation {
     CopyFiles {
@@ -43,63 +116,7 @@ impl Operation {
                         .create(true)
                         .open(&p)
                     {
-                        Ok(mut file) => match backup {
-                            Backup::None => Ok(file),
-                            Backup::Numbered => {
-                                let mut backup_count = 1;
-
-                                loop {
-                                    let backup_name = format!(
-                                        "{}.~{}~",
-                                        p.file_name().unwrap().to_string_lossy(),
-                                        backup_count
-                                    );
-
-                                    let backup_path = p.with_file_name(backup_name);
-
-                                    match OpenOptions::new()
-                                        .create_new(true)
-                                        .write(true)
-                                        .open(&backup_path)
-                                    {
-                                        Ok(mut backup) => {
-                                            io::copy(&mut file, &mut backup)?;
-                                            file.set_len(0)?;
-                                            file.rewind()?;
-                                            return Ok(file);
-                                        }
-                                        Err(e) => match e.kind() {
-                                            ErrorKind::AlreadyExists => {
-                                                backup_count += 1;
-                                            }
-                                            _ => return Err(e),
-                                        },
-                                    };
-                                }
-                            }
-                            Backup::Simple(ext) => {
-                                let backup_name =
-                                    format!("{}.{}", p.file_name().unwrap().to_string_lossy(), ext);
-
-                                let backup_path = p.with_file_name(backup_name);
-
-                                return match OpenOptions::new()
-                                    .create(true)
-                                    .truncate(true)
-                                    .write(true)
-                                    .open(&backup_path)
-                                {
-                                    Ok(mut backup) => {
-                                        io::copy(&mut file, &mut backup)?;
-                                        file.set_len(0)?;
-                                        file.rewind()?;
-                                        Ok(file)
-                                    }
-                                    Err(e) => Err(e),
-                                };
-                            }
-                            _ => todo!(),
-                        },
+                        Ok(file) => backup.open_for(p, file),
                         Err(e) => Err(e),
                     }
                 };
@@ -416,7 +433,7 @@ mod tests {
     #[test]
     fn copy_files_backs_up_existing_files_if_backup_is_simple() {
         let mut err_out = TestOutputWriter::new();
-        let root = Interim::new("copy_files_backs_up_existing_files_if_backup_is_numbered")
+        let root = Interim::new("copy_files_backs_up_existing_files_if_backup_is_simple")
             .expect("unable to create test root");
 
         fs::create_dir(root.join("destination")).expect("unable to create destination");

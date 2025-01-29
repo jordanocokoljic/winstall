@@ -11,6 +11,11 @@ pub enum Backup {
     Existing(String),
 }
 
+enum BackupOutcome {
+    Removed(PathBuf),
+    BackedUp(PathBuf),
+}
+
 impl Backup {
     pub fn open_for(&self, p: impl AsRef<Path>, file: File) -> io::Result<File> {
         fn numbered(p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
@@ -116,7 +121,7 @@ impl Operation {
                 destination,
                 backup,
                 preserve_timestamps,
-                ..
+                verbose,
             } => {
                 let open_destination = |p: &Path| -> io::Result<File> {
                     match OpenOptions::new()
@@ -188,7 +193,16 @@ impl Operation {
                     };
 
                     match io::copy(&mut from, &mut to) {
-                        Ok(_) => (),
+                        Ok(_) => {
+                            if *verbose {
+                                _ = writeln!(
+                                    write_err,
+                                    "'{}' -> '{}'",
+                                    strip_prefix(file, &container).display(),
+                                    strip_prefix(destination, &container).display()
+                                );
+                            }
+                        },
                         Err(e) => panic!("unable to copy file: {}", e),
                     };
 
@@ -199,6 +213,13 @@ impl Operation {
             }
         };
     }
+}
+
+fn strip_prefix<F: AsRef<Path>, P: AsRef<Path>>(file: F, prefix: P) -> PathBuf {
+    file.as_ref()
+        .strip_prefix(prefix)
+        .unwrap_or(file.as_ref())
+        .to_path_buf()
 }
 
 #[cfg(test)]
@@ -608,6 +629,35 @@ mod tests {
             read_to_string(root.join("destination/b.txt.~2~")).unwrap(),
             "old-b",
         );
+    }
+
+    #[test]
+    fn copy_files_announces_file_changes_in_verbose_mode() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_announces_file_changes_in_verbose_mode")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new-a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            verbose: true,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "'{}' -> '{}'",
+                Path::new("a.txt").display(),
+                Path::new("destination").join("a.txt").display()
+            )
+            .as_str()
+        ));
     }
 
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {

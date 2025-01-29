@@ -48,7 +48,7 @@ impl Backup {
 
         fn simple(ext: impl AsRef<str>, p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
             let backup_name = format!(
-                "{}.{}",
+                "{}{}",
                 p.as_ref().file_name().unwrap().to_string_lossy(),
                 ext.as_ref()
             );
@@ -72,7 +72,16 @@ impl Backup {
         }
 
         fn existing(ext: impl AsRef<str>, p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
-            todo!()
+            let numbered_backup_name =
+                format!("{}.~1~", p.as_ref().file_name().unwrap().to_string_lossy(),);
+
+            let numbered_backup_path = p.as_ref().with_file_name(numbered_backup_name);
+
+            if numbered_backup_path.exists() {
+                return numbered(p, file);
+            }
+
+            simple(ext, p, file)
         }
 
         match self {
@@ -448,7 +457,85 @@ mod tests {
         let operation = Operation::CopyFiles {
             files: vec![PathBuf::from("a.txt")],
             destination: PathBuf::from("destination"),
-            backup: Backup::Simple("bak".to_string()),
+            backup: Backup::Simple(".bak".to_string()),
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt")).unwrap(),
+            "new",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt.bak")).unwrap(),
+            "old",
+        );
+    }
+
+    #[test]
+    fn copy_files_creates_numbered_backups_for_existing_if_present() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_creates_numbered_backups_for_existing_if_present")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new").expect("unable to create a.txt");
+
+        new_file_with_content(root.join("destination/a.txt"), "old")
+            .expect("unable to create destination/a.txt");
+
+        new_file_with_content(root.join("destination/a.txt.~1~"), "veryold")
+            .expect("unable to create destination/a.txt.~1~");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::Existing(".bak".to_string()),
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt")).unwrap(),
+            "new",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt.~1~")).unwrap(),
+            "veryold",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt.~2~")).unwrap(),
+            "old",
+        );
+    }
+
+    #[test]
+    fn copy_files_creates_simple_backups_for_existing_if_none_present() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_creates_simple_backups_for_existing_if_none_present")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new").expect("unable to create a.txt");
+
+        new_file_with_content(root.join("destination/a.txt"), "old")
+            .expect("unable to create destination/a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::Existing(".bak".to_string()),
             preserve_timestamps: false,
             verbose: false,
         };

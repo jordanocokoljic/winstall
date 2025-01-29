@@ -71,7 +71,7 @@ impl Backup {
             }
         }
 
-        fn existing(ext: impl AsRef<str>, p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
+        fn existing(ext: impl AsRef<str>, p: impl AsRef<Path>, file: File) -> io::Result<File> {
             let numbered_backup_name =
                 format!("{}.~1~", p.as_ref().file_name().unwrap().to_string_lossy(),);
 

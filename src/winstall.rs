@@ -11,7 +11,7 @@ pub enum Backup {
     Existing(String),
 }
 
-enum BackupOutcome {
+pub enum BackupOutcome {
     Removed(PathBuf),
     BackedUp(PathBuf),
 }
@@ -201,7 +201,7 @@ impl Operation {
                     };
 
                     if *verbose {
-                        if let BackupOutcome::Removed(removed_path) = outcome {
+                        if let BackupOutcome::Removed(removed_path) = &outcome {
                             _ = writeln!(
                                 write_err,
                                 "removed '{}'",
@@ -213,11 +213,22 @@ impl Operation {
                     match io::copy(&mut from, &mut to) {
                         Ok(_) => {
                             if *verbose {
+                                let extended_message =
+                                    if let BackupOutcome::BackedUp(backup_path) = &outcome {
+                                        format!(
+                                            " (backup: '{}')",
+                                            strip_prefix(backup_path, &container).display()
+                                        )
+                                    } else {
+                                        "".into()
+                                    };
+
                                 _ = writeln!(
                                     write_err,
-                                    "'{}' -> '{}'",
+                                    "'{}' -> '{}'{}",
                                     strip_prefix(file, &container).display(),
-                                    strip_prefix(destination, &container).display()
+                                    strip_prefix(destination, &container).display(),
+                                    extended_message,
                                 );
                             }
                         }
@@ -703,6 +714,38 @@ mod tests {
             format!(
                 "removed '{}'",
                 Path::new("destination").join("a.txt").display()
+            )
+            .as_str()
+        ));
+    }
+
+    #[test]
+    fn copy_files_announces_file_backups_in_verbose_mode() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_announces_file_backups_in_verbose_mode")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new-a").expect("unable to create a.txt");
+        new_file_with_content(root.join("destination/a.txt"), "old-a")
+            .expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::Numbered,
+            preserve_timestamps: false,
+            verbose: true,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "'{}' -> '{}' (backup: '{}')",
+                Path::new("a.txt").display(),
+                Path::new("destination").join("a.txt").display(),
+                Path::new("destination").join("a.txt.~1~").display()
             )
             .as_str()
         ));

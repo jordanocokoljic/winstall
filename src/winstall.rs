@@ -17,8 +17,8 @@ enum BackupOutcome {
 }
 
 impl Backup {
-    pub fn open_for(&self, p: impl AsRef<Path>, file: File) -> io::Result<File> {
-        fn numbered(p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
+    pub fn open_for(&self, p: impl AsRef<Path>, file: File) -> io::Result<(File, BackupOutcome)> {
+        fn numbered(p: impl AsRef<Path>, mut file: File) -> io::Result<(File, BackupOutcome)> {
             let mut backup_count = 1;
 
             loop {
@@ -39,7 +39,7 @@ impl Backup {
                         io::copy(&mut file, &mut backup)?;
                         file.set_len(0)?;
                         file.rewind()?;
-                        return Ok(file);
+                        return Ok((file, BackupOutcome::BackedUp(backup_path)));
                     }
                     Err(e) => match e.kind() {
                         ErrorKind::AlreadyExists => {
@@ -51,7 +51,11 @@ impl Backup {
             }
         }
 
-        fn simple(ext: impl AsRef<str>, p: impl AsRef<Path>, mut file: File) -> io::Result<File> {
+        fn simple(
+            ext: impl AsRef<str>,
+            p: impl AsRef<Path>,
+            mut file: File,
+        ) -> io::Result<(File, BackupOutcome)> {
             let backup_name = format!(
                 "{}{}",
                 p.as_ref().file_name().unwrap().to_string_lossy(),
@@ -70,15 +74,19 @@ impl Backup {
                     io::copy(&mut file, &mut backup)?;
                     file.set_len(0)?;
                     file.rewind()?;
-                    Ok(file)
+                    Ok((file, BackupOutcome::BackedUp(backup_path)))
                 }
                 Err(e) => Err(e),
             }
         }
 
-        fn existing(ext: impl AsRef<str>, p: impl AsRef<Path>, file: File) -> io::Result<File> {
+        fn existing(
+            ext: impl AsRef<str>,
+            p: impl AsRef<Path>,
+            file: File,
+        ) -> io::Result<(File, BackupOutcome)> {
             let numbered_backup_name =
-                format!("{}.~1~", p.as_ref().file_name().unwrap().to_string_lossy(),);
+                format!("{}.~1~", p.as_ref().file_name().unwrap().to_string_lossy());
 
             let numbered_backup_path = p.as_ref().with_file_name(numbered_backup_name);
 
@@ -90,7 +98,7 @@ impl Backup {
         }
 
         match self {
-            Backup::None => Ok(file),
+            Backup::None => Ok((file, BackupOutcome::Removed(p.as_ref().to_path_buf()))),
             Backup::Numbered => numbered(p, file),
             Backup::Simple(ext) => simple(ext, p, file),
             Backup::Existing(ext) => existing(ext, p, file),
@@ -123,7 +131,7 @@ impl Operation {
                 preserve_timestamps,
                 verbose,
             } => {
-                let open_destination = |p: &Path| -> io::Result<File> {
+                let open_destination = |p: &Path| -> io::Result<(File, BackupOutcome)> {
                     match OpenOptions::new()
                         .read(true)
                         .write(true)
@@ -187,10 +195,20 @@ impl Operation {
                         },
                     };
 
-                    let mut to = match open_destination(&destination) {
-                        Ok(to) => to,
+                    let (mut to, outcome) = match open_destination(&destination) {
+                        Ok(result) => result,
                         Err(e) => panic!("unable to open destination file: {}", e),
                     };
+
+                    if *verbose {
+                        if let BackupOutcome::Removed(removed_path) = outcome {
+                            _ = writeln!(
+                                write_err,
+                                "removed '{}'",
+                                strip_prefix(removed_path, &container).display(),
+                            );
+                        }
+                    }
 
                     match io::copy(&mut from, &mut to) {
                         Ok(_) => {
@@ -202,7 +220,7 @@ impl Operation {
                                     strip_prefix(destination, &container).display()
                                 );
                             }
-                        },
+                        }
                         Err(e) => panic!("unable to copy file: {}", e),
                     };
 
@@ -654,6 +672,36 @@ mod tests {
             format!(
                 "'{}' -> '{}'",
                 Path::new("a.txt").display(),
+                Path::new("destination").join("a.txt").display()
+            )
+            .as_str()
+        ));
+    }
+
+    #[test]
+    fn copy_files_announces_file_overwrites_in_verbose_mode() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_announces_file_overwrites_in_verbose_mode")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new-a").expect("unable to create a.txt");
+        new_file_with_content(root.join("destination/a.txt"), "old-a")
+            .expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            verbose: true,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "removed '{}'",
                 Path::new("destination").join("a.txt").display()
             )
             .as_str()

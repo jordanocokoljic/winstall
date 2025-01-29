@@ -555,6 +555,61 @@ mod tests {
         );
     }
 
+    #[test]
+    fn copy_files_creates_mixed_backups_for_existing_if_present() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_creates_mixed_backups_for_existing_if_present")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "new-a").expect("unable to create a.txt");
+        new_file_with_content(root.join("b.txt"), "new-b").expect("unable to create b.txt");
+
+        new_file_with_content(root.join("destination/a.txt"), "old-a")
+            .expect("unable to create a.txt");
+
+        new_file_with_content(root.join("destination/b.txt"), "old-b")
+            .expect("unable to create b.txt");
+
+        new_file_with_content(root.join("destination/a.txt.bak"), "veryold-a")
+            .expect("unable to create a.txt.bak");
+
+        new_file_with_content(root.join("destination/b.txt.~1~"), "veryold-b")
+            .expect("unable to create b.txt.bak");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt"), PathBuf::from("b.txt")],
+            destination: PathBuf::from("destination"),
+            backup: Backup::Existing(".bak".to_string()),
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt")).unwrap(),
+            "new-a",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/b.txt")).unwrap(),
+            "new-b",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/a.txt.bak")).unwrap(),
+            "old-a",
+        );
+
+        assert_eq!(
+            read_to_string(root.join("destination/b.txt.~2~")).unwrap(),
+            "old-b",
+        );
+    }
+
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {
         let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
         file.write_all(content.as_bytes())?;

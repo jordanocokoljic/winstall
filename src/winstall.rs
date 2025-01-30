@@ -197,7 +197,18 @@ impl Operation {
 
                     let (mut to, outcome) = match open_destination(&destination) {
                         Ok(result) => result,
-                        Err(e) => panic!("unable to open destination file: {}", e),
+                        Err(e) => match e.kind() {
+                            ErrorKind::PermissionDenied => {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: cannot stat '{}': Permission denied",
+                                    strip_prefix(destination, &container).display()
+                                );
+
+                                continue;
+                            }
+                            _ => panic!("unable to open destination file: {}", e),
+                        },
                     };
 
                     if *verbose {
@@ -259,7 +270,7 @@ mod tests {
     use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
-    use std::{fs, io, thread};
+    use std::{env, fs, io, thread};
 
     #[test]
     fn copy_files_copies_files() {
@@ -746,6 +757,35 @@ mod tests {
                 Path::new("a.txt").display(),
                 Path::new("destination").join("a.txt").display(),
                 Path::new("destination").join("a.txt.~1~").display()
+            )
+            .as_str()
+        ));
+    }
+
+    #[test]
+    fn copy_files_reports_permission_denied_for_target() {
+        let mut err_out = TestOutputWriter::new();
+        let cwd = env::current_dir().expect("unable to get current directory");
+
+        let root = Interim::new("copy_files_reports_permission_denied_for_target")
+            .expect("unable to create test root");
+
+        new_file_with_content(root.join("a.txt"), "a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![root.join("a.txt")],
+            destination: PathBuf::from("readonly_directory"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&cwd, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: cannot stat '{}': Permission denied",
+                Path::new("readonly_directory").join("a.txt").display()
             )
             .as_str()
         ));

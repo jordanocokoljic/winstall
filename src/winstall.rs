@@ -181,18 +181,27 @@ impl Operation {
 
                             from
                         }
-                        Err(e) => match e.kind() {
-                            ErrorKind::NotFound => {
-                                _ = writeln!(
-                                    write_err,
-                                    "winstall: cannot stat '{}': No such file or directory",
-                                    file.display()
-                                );
-
-                                continue;
+                        Err(e) => {
+                            match e.kind() {
+                                ErrorKind::NotFound => {
+                                    _ = writeln!(
+                                        write_err,
+                                        "winstall: cannot stat '{}': No such file or directory",
+                                        strip_prefix(file, &container).display()
+                                    )
+                                }
+                                ErrorKind::PermissionDenied => {
+                                    _ = writeln!(
+                                        write_err,
+                                        "winstall: cannot open '{}' for reading: Permission denied",
+                                        strip_prefix(file, &container).display()
+                                    )
+                                }
+                                _ => panic!("unable to open source file: {}", e),
                             }
-                            _ => panic!("unable to open source file: {}", e),
-                        },
+
+                            continue;
+                        }
                     };
 
                     let (mut to, outcome) = match open_destination(&destination) {
@@ -266,6 +275,7 @@ fn strip_prefix<F: AsRef<Path>, P: AsRef<Path>>(file: F, prefix: P) -> PathBuf {
 mod tests {
     use crate::interim::Interim;
     use crate::winstall::{Backup, Operation};
+    use std::fmt::{Debug, Formatter};
     use std::fs::{read_to_string, File, OpenOptions};
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -791,6 +801,35 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn copy_files_reports_permission_denied_for_source() {
+        let mut err_out = TestOutputWriter::new();
+        let cwd = env::current_dir().expect("unable to get current directory");
+
+        let root = Interim::new("copy_files_reports_permission_denied_for_source")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+
+        let operation = Operation::CopyFiles {
+            files: vec![Path::new("readonly_directory").join("file.txt")],
+            destination: root.join("destination"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&cwd, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: cannot open '{}' for reading: Permission denied",
+                Path::new("readonly_directory").join("file.txt").display()
+            )
+            .as_str()
+        ));
+    }
+
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {
         let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
         file.write_all(content.as_bytes())?;
@@ -823,6 +862,12 @@ mod tests {
 
         fn flush(&mut self) -> io::Result<()> {
             self.0.flush()
+        }
+    }
+
+    impl Debug for TestOutputWriter {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", String::from_utf8_lossy(&*self.0.clone()))
         }
     }
 }

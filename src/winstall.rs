@@ -1,7 +1,7 @@
 use std::fs::{File, FileTimes, OpenOptions};
-use std::io;
 use std::io::{ErrorKind, Seek};
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 pub enum Backup {
     None,
@@ -155,7 +155,8 @@ impl Operation {
                     }
 
                     let name = file.file_name().unwrap();
-                    let destination = container.as_ref().join(destination).join(name);
+                    let destination_folder = container.as_ref().join(destination);
+                    let destination_file = destination_folder.join(name);
 
                     let mut file_times: Option<FileTimes> = None;
 
@@ -202,14 +203,31 @@ impl Operation {
                         }
                     };
 
-                    let (mut to, outcome) = match open_destination(&destination) {
+                    match fs::create_dir(&destination_folder) {
+                        Ok(_) => (),
+                        Err(e) => match e.kind() {
+                            ErrorKind::AlreadyExists => (),
+                            ErrorKind::NotFound => {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: cannot create regular file '{}': No such file or directory",
+                                    strip_prefix(destination_folder, &container).display()
+                                );
+
+                                continue;
+                            }
+                            _ => panic!("unable to create destination directory: {}", e),
+                        },
+                    };
+
+                    let (mut to, outcome) = match open_destination(&destination_file) {
                         Ok(result) => result,
                         Err(e) => match e.kind() {
                             ErrorKind::PermissionDenied => {
                                 _ = writeln!(
                                     write_err,
                                     "winstall: cannot stat '{}': Permission denied",
-                                    strip_prefix(destination, &container).display()
+                                    strip_prefix(destination_file, &container).display()
                                 );
 
                                 continue;
@@ -245,7 +263,7 @@ impl Operation {
                                     write_err,
                                     "'{}' -> '{}'{}",
                                     strip_prefix(file, &container).display(),
-                                    strip_prefix(destination, &container).display(),
+                                    strip_prefix(destination_file, &container).display(),
                                     extended_message,
                                 );
                             }
@@ -823,6 +841,63 @@ mod tests {
             format!(
                 "winstall: cannot open '{}' for reading: Permission denied",
                 Path::new("readonly_directory").join("file.txt").display()
+            )
+            .as_str()
+        ));
+    }
+
+    #[test]
+    fn copy_files_creates_the_last_component_of_destination() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_creates_the_last_component_of_destination")
+            .expect("unable to create test root");
+
+        fs::create_dir(root.join("destination")).expect("unable to create destination");
+        new_file_with_content(root.join("a.txt"), "a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination").join("subdirectory"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+
+        assert_eq!(
+            read_to_string(root.join("destination/subdirectory/a.txt")).unwrap(),
+            "a"
+        );
+    }
+
+    #[test]
+    fn copy_files_indicates_that_the_target_path_is_incomplete() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_indicates_that_the_target_path_is_incomplete")
+            .expect("unable to create test root");
+
+        new_file_with_content(root.join("a.txt"), "a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination").join("sub_one").join("sub_two"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: cannot create regular file '{}': No such file or directory",
+                Path::new("destination")
+                    .join("sub_one")
+                    .join("sub_two")
+                    .display()
             )
             .as_str()
         ));

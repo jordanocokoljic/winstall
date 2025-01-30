@@ -3,7 +3,6 @@ use std::io;
 use std::io::{ErrorKind, Seek};
 use std::path::{Path, PathBuf};
 
-#[derive(PartialEq, Debug)]
 pub enum Backup {
     None,
     Numbered,
@@ -106,7 +105,6 @@ impl Backup {
     }
 }
 
-#[derive(PartialEq, Debug)]
 pub enum Operation {
     CopyFiles {
         files: Vec<PathBuf>,

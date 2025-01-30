@@ -185,11 +185,11 @@ impl Operation {
                             ErrorKind::NotFound => {
                                 _ = writeln!(
                                     write_err,
-                                    "winstall: file '{}' could not be found",
+                                    "winstall: cannot stat '{}': No such file or directory",
                                     file.display()
                                 );
 
-                                return;
+                                continue;
                             }
                             _ => panic!("unable to open source file: {}", e),
                         },
@@ -342,7 +342,7 @@ mod tests {
 
         operation.execute(&root, &mut err_out);
 
-        assert!(err_out.contains("winstall: file 'missing.txt' could not be found"));
+        assert!(err_out.contains("winstall: cannot stat 'missing.txt': No such file or directory"));
     }
 
     #[test]

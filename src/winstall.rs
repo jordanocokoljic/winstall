@@ -114,6 +114,10 @@ pub enum Operation {
         make_all_directories: bool,
         verbose: bool,
     },
+    CreateDirectories {
+        directories: Vec<PathBuf>,
+        verbose: bool,
+    },
 }
 
 impl Operation {
@@ -299,6 +303,17 @@ impl Operation {
                     if let Some(times) = file_times {
                         to.set_times(times).expect("unable to set file times");
                     }
+                }
+            }
+            Operation::CreateDirectories {
+                directories,
+                verbose,
+            } => {
+                for directory in directories {
+                    match fs::create_dir_all(container.as_ref().join(&directory)) {
+                        Ok(_) => (),
+                        Err(e) => panic!("unable to create directory: {}", e),
+                    };
                 }
             }
         };
@@ -1034,6 +1049,27 @@ mod tests {
             )
             .as_str()
         ));
+    }
+
+    #[test]
+    fn create_directories_creates_directories() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("create_directories_creates_directories")
+            .expect("unable to create test root");
+
+        let operation = Operation::CreateDirectories {
+            directories: vec![
+                PathBuf::from("a/nested/directory"),
+                PathBuf::from("top_level"),
+            ],
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+        assert!(root.join("a").join("nested").join("directory").is_dir());
+        assert!(root.join("top_level").is_dir());
     }
 
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {

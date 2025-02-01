@@ -311,7 +311,15 @@ impl Operation {
             } => {
                 for directory in directories {
                     match fs::create_dir_all(container.as_ref().join(&directory)) {
-                        Ok(_) => (),
+                        Ok(_) => {
+                            if *verbose {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: creating directory '{}'",
+                                    strip_prefix(directory, &container).display(),
+                                );
+                            }
+                        }
                         Err(e) => panic!("unable to create directory: {}", e),
                     };
                 }
@@ -1070,6 +1078,28 @@ mod tests {
         assert!(err_out.is_empty());
         assert!(root.join("a").join("nested").join("directory").is_dir());
         assert!(root.join("top_level").is_dir());
+    }
+
+    #[test]
+    fn create_directory_reports_creation_in_verbose_mode() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("create_directory_reports_creation_in_verbose_mode")
+            .expect("unable to create test root");
+
+        let operation = Operation::CreateDirectories {
+            directories: vec![PathBuf::from("my/directory")],
+            verbose: true,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: creating directory '{}'",
+                Path::new("my/directory").display()
+            )
+            .as_str()
+        ));
     }
 
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {

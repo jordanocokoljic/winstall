@@ -111,6 +111,7 @@ pub enum Operation {
         destination: PathBuf,
         backup: Backup,
         preserve_timestamps: bool,
+        make_all_directories: bool,
         verbose: bool,
     },
 }
@@ -127,6 +128,7 @@ impl Operation {
                 destination,
                 backup,
                 preserve_timestamps,
+                make_all_directories,
                 verbose,
             } => {
                 let open_destination = |p: &Path| -> io::Result<(File, BackupOutcome)> {
@@ -203,8 +205,22 @@ impl Operation {
                         }
                     };
 
-                    match fs::create_dir(&destination_folder) {
-                        Ok(_) => (),
+                    let create_directory_result = if *make_all_directories {
+                        fs::create_dir_all(&destination_folder)
+                    } else {
+                        fs::create_dir(&destination_folder)
+                    };
+
+                    match create_directory_result {
+                        Ok(_) => {
+                            if *verbose {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: creating directory '{}'",
+                                    strip_prefix(destination_folder, &container).display()
+                                );
+                            }
+                        }
                         Err(e) => match e.kind() {
                             ErrorKind::AlreadyExists => (),
                             ErrorKind::NotFound => {
@@ -317,6 +333,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -342,6 +359,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -363,6 +381,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -387,6 +406,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -430,6 +450,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: true,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -471,6 +492,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -503,6 +525,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::Numbered,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -546,6 +569,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::Simple(".bak".to_string()),
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -584,6 +608,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::Existing(".bak".to_string()),
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -624,6 +649,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::Existing(".bak".to_string()),
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -669,6 +695,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::Existing(".bak".to_string()),
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -711,6 +738,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: true,
         };
 
@@ -742,6 +770,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: true,
         };
 
@@ -772,6 +801,7 @@ mod tests {
             destination: PathBuf::from("destination"),
             backup: Backup::Numbered,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: true,
         };
 
@@ -803,6 +833,7 @@ mod tests {
             destination: PathBuf::from("readonly_directory"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -832,6 +863,7 @@ mod tests {
             destination: root.join("destination"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -860,6 +892,7 @@ mod tests {
             destination: PathBuf::from("destination").join("subdirectory"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -886,6 +919,7 @@ mod tests {
             destination: PathBuf::from("destination").join("sub_one").join("sub_two"),
             backup: Backup::None,
             preserve_timestamps: false,
+            make_all_directories: false,
             verbose: false,
         };
 
@@ -901,6 +935,33 @@ mod tests {
             )
             .as_str()
         ));
+    }
+
+    #[test]
+    fn copy_files_can_create_leading_destination_directories() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_can_create_leading_destination_directories")
+            .expect("unable to create test root");
+
+        new_file_with_content(root.join("a.txt"), "a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![PathBuf::from("a.txt")],
+            destination: PathBuf::from("destination").join("sub_one").join("sub_two"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            make_all_directories: true,
+            verbose: false,
+        };
+
+        operation.execute(&root, &mut err_out);
+
+        assert!(err_out.is_empty());
+
+        assert_eq!(
+            read_to_string(root.join("destination/sub_one/sub_two/a.txt")).unwrap(),
+            "a"
+        );
     }
 
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {

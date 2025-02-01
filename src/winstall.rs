@@ -320,7 +320,18 @@ impl Operation {
                                 );
                             }
                         }
-                        Err(e) => panic!("unable to create directory: {}", e),
+                        Err(e) => match e.kind() {
+                            ErrorKind::PermissionDenied => {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: cannot create directory '{}': Permission denied",
+                                    strip_prefix(directory, &container).display(),
+                                );
+
+                                continue;
+                            }
+                            _ => panic!("unable to create directory: {}", e),
+                        },
                     };
                 }
             }
@@ -1097,6 +1108,30 @@ mod tests {
             format!(
                 "winstall: creating directory '{}'",
                 Path::new("my/directory").display()
+            )
+            .as_str()
+        ));
+    }
+
+    #[test]
+    fn create_directory_reports_permission_denied_errors() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("create_directory_reports_permission_denied_errors")
+            .expect("unable to create test root");
+
+        let cwd = env::current_dir().expect("unable to get current directory");
+
+        let operation = Operation::CreateDirectories {
+            directories: vec![PathBuf::from("readonly_directory").join("invalid")],
+            verbose: false,
+        };
+
+        operation.execute(&cwd, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: cannot create directory '{}': Permission denied",
+                Path::new("readonly_directory").join("invalid").display()
             )
             .as_str()
         ));

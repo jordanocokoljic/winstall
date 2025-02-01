@@ -232,6 +232,15 @@ impl Operation {
 
                                 continue;
                             }
+                            ErrorKind::PermissionDenied => {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: cannot create directory '{}': Permission denied",
+                                    strip_prefix(destination_folder, &container).display()
+                                );
+
+                                continue;
+                            }
                             _ => panic!("unable to create destination directory: {}", e),
                         },
                     };
@@ -962,6 +971,69 @@ mod tests {
             read_to_string(root.join("destination/sub_one/sub_two/a.txt")).unwrap(),
             "a"
         );
+    }
+
+    #[test]
+    fn copy_files_reports_when_unable_to_create_partial_destination() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_reports_when_unable_to_create_partial_destination")
+            .expect("unable to create test root");
+
+        let cwd = env::current_dir().expect("unable to get current directory");
+
+        new_file_with_content(root.join("a.txt"), "a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![root.join("a.txt")],
+            destination: PathBuf::from("readonly_directory").join("sub"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            make_all_directories: false,
+            verbose: false,
+        };
+
+        operation.execute(&cwd, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: cannot create directory '{}': Permission denied",
+                Path::new("readonly_directory").join("sub").display()
+            )
+            .as_str()
+        ));
+    }
+
+    #[test]
+    fn copy_files_reports_when_unable_to_create_full_destination() {
+        let mut err_out = TestOutputWriter::new();
+        let root = Interim::new("copy_files_reports_when_unable_to_create_full_destination")
+            .expect("unable to create test root");
+
+        let cwd = env::current_dir().expect("unable to get current directory");
+
+        new_file_with_content(root.join("a.txt"), "a").expect("unable to create a.txt");
+
+        let operation = Operation::CopyFiles {
+            files: vec![root.join("a.txt")],
+            destination: PathBuf::from("readonly_directory").join("sub").join("dir"),
+            backup: Backup::None,
+            preserve_timestamps: false,
+            make_all_directories: true,
+            verbose: false,
+        };
+
+        operation.execute(&cwd, &mut err_out);
+
+        assert!(err_out.contains(
+            format!(
+                "winstall: cannot create directory '{}': Permission denied",
+                Path::new("readonly_directory")
+                    .join("sub")
+                    .join("dir")
+                    .display()
+            )
+            .as_str()
+        ));
     }
 
     fn new_file_with_content<P: AsRef<Path>>(path: P, content: &str) -> io::Result<File> {

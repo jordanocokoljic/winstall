@@ -190,7 +190,7 @@ impl Operation {
                             }
                             _ => panic!("unable to create destination directory: {}", e),
                         };
-                    },
+                    }
                 };
 
                 for file in files {

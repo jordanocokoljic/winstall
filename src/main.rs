@@ -1,5 +1,6 @@
 mod interim;
 mod winstall;
+mod cli;
 
 fn main() {
     /*

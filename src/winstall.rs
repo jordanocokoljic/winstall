@@ -149,6 +149,50 @@ impl Operation {
                     }
                 };
 
+                let destination_folder = container.as_ref().join(destination);
+
+                let create_directory_result = if *make_all_directories {
+                    fs::create_dir_all(&destination_folder)
+                } else {
+                    fs::create_dir(&destination_folder)
+                };
+
+                match create_directory_result {
+                    Ok(_) => {
+                        if *verbose {
+                            _ = writeln!(
+                                write_err,
+                                "winstall: creating directory '{}'",
+                                strip_prefix(&destination_folder, &container).display()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        match e.kind() {
+                            ErrorKind::AlreadyExists => (),
+                            ErrorKind::NotFound => {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: cannot create regular file '{}': No such file or directory",
+                                    strip_prefix(&destination_folder, &container).display()
+                                );
+
+                                return false;
+                            }
+                            ErrorKind::PermissionDenied => {
+                                _ = writeln!(
+                                    write_err,
+                                    "winstall: cannot create directory '{}': Permission denied",
+                                    strip_prefix(&destination_folder, &container).display()
+                                );
+
+                                return false;
+                            }
+                            _ => panic!("unable to create destination directory: {}", e),
+                        };
+                    },
+                };
+
                 for file in files {
                     let source = container.as_ref().join(file);
 
@@ -164,7 +208,6 @@ impl Operation {
                     }
 
                     let name = file.file_name().unwrap();
-                    let destination_folder = container.as_ref().join(destination);
                     let destination_file = destination_folder.join(name);
 
                     let mut file_times: Option<FileTimes> = None;
@@ -211,50 +254,6 @@ impl Operation {
                             ok = false;
                             continue;
                         }
-                    };
-
-                    let create_directory_result = if *make_all_directories {
-                        fs::create_dir_all(&destination_folder)
-                    } else {
-                        fs::create_dir(&destination_folder)
-                    };
-
-                    match create_directory_result {
-                        Ok(_) => {
-                            if *verbose {
-                                _ = writeln!(
-                                    write_err,
-                                    "winstall: creating directory '{}'",
-                                    strip_prefix(destination_folder, &container).display()
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            match e.kind() {
-                                ErrorKind::AlreadyExists => (),
-                                ErrorKind::NotFound => {
-                                    _ = writeln!(
-                                        write_err,
-                                        "winstall: cannot create regular file '{}': No such file or directory",
-                                        strip_prefix(destination_folder, &container).display()
-                                    );
-
-                                    ok = false;
-                                    continue;
-                                }
-                                ErrorKind::PermissionDenied => {
-                                    _ = writeln!(
-                                        write_err,
-                                        "winstall: cannot create directory '{}': Permission denied",
-                                        strip_prefix(destination_folder, &container).display()
-                                    );
-
-                                    ok = false;
-                                    continue;
-                                }
-                                _ => panic!("unable to create destination directory: {}", e),
-                            };
-                        },
                     };
 
                     let (mut to, outcome) = match open_destination(&destination_file) {

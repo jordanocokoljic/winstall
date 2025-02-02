@@ -15,8 +15,14 @@ impl External {
 }
 
 #[derive(Debug, PartialEq)]
+enum BackupKind {
+    Unspecified,
+    Specified(String),
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Provided {
-    backup: Option<String>,
+    backup: Option<BackupKind>,
     suffix: Option<String>,
     verbose: bool,
     preserve_timestamps: bool,
@@ -50,6 +56,9 @@ impl Provided {
                 "-D" => {
                     provided.make_all_directories = true;
                 }
+                "-b" | "--backup" => {
+                    provided.backup = Some(BackupKind::Unspecified);
+                }
                 _ => (),
             }
         }
@@ -60,7 +69,7 @@ impl Provided {
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::{External, Provided};
+    use crate::cli::{BackupKind, External, Provided};
     use std::env;
 
     #[test]
@@ -195,6 +204,7 @@ mod tests {
             }
         );
     }
+
     #[test]
     fn provided_parses_short_make_all_directories_correctly() {
         let args = vec!["-D"].into_iter().map(str::to_owned);
@@ -208,6 +218,42 @@ mod tests {
                 verbose: false,
                 preserve_timestamps: false,
                 make_all_directories: true,
+                no_target_directory: false,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_short_unspecified_backup_correctly() {
+        let args = vec!["-b"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided,
+            Provided {
+                backup: Some(BackupKind::Unspecified),
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_long_unspecified_backup_correctly() {
+        let args = vec!["--backup"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided,
+            Provided {
+                backup: Some(BackupKind::Unspecified),
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
                 no_target_directory: false,
             }
         );

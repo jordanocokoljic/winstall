@@ -121,7 +121,7 @@ pub enum Operation {
 }
 
 impl Operation {
-    pub fn execute<P, E>(&self, container: P, write_err: &mut E)
+    pub fn execute<P, E>(&self, container: P, write_err: &mut E) -> bool
     where
         P: AsRef<Path>,
         E: io::Write,
@@ -135,6 +135,8 @@ impl Operation {
                 make_all_directories,
                 verbose,
             } => {
+                let mut ok = true;
+
                 let open_destination = |p: &Path| -> io::Result<(File, BackupOutcome)> {
                     match OpenOptions::new()
                         .read(true)
@@ -157,6 +159,7 @@ impl Operation {
                             file.display()
                         );
 
+                        ok = false;
                         continue;
                     }
 
@@ -193,7 +196,7 @@ impl Operation {
                                         write_err,
                                         "winstall: cannot stat '{}': No such file or directory",
                                         strip_prefix(file, &container).display()
-                                    )
+                                    );
                                 }
                                 ErrorKind::PermissionDenied => {
                                     _ = writeln!(
@@ -205,6 +208,7 @@ impl Operation {
                                 _ => panic!("unable to open source file: {}", e),
                             }
 
+                            ok = false;
                             continue;
                         }
                     };
@@ -225,27 +229,31 @@ impl Operation {
                                 );
                             }
                         }
-                        Err(e) => match e.kind() {
-                            ErrorKind::AlreadyExists => (),
-                            ErrorKind::NotFound => {
-                                _ = writeln!(
-                                    write_err,
-                                    "winstall: cannot create regular file '{}': No such file or directory",
-                                    strip_prefix(destination_folder, &container).display()
-                                );
+                        Err(e) => {
+                            match e.kind() {
+                                ErrorKind::AlreadyExists => (),
+                                ErrorKind::NotFound => {
+                                    _ = writeln!(
+                                        write_err,
+                                        "winstall: cannot create regular file '{}': No such file or directory",
+                                        strip_prefix(destination_folder, &container).display()
+                                    );
 
-                                continue;
-                            }
-                            ErrorKind::PermissionDenied => {
-                                _ = writeln!(
-                                    write_err,
-                                    "winstall: cannot create directory '{}': Permission denied",
-                                    strip_prefix(destination_folder, &container).display()
-                                );
+                                    ok = false;
+                                    continue;
+                                }
+                                ErrorKind::PermissionDenied => {
+                                    _ = writeln!(
+                                        write_err,
+                                        "winstall: cannot create directory '{}': Permission denied",
+                                        strip_prefix(destination_folder, &container).display()
+                                    );
 
-                                continue;
-                            }
-                            _ => panic!("unable to create destination directory: {}", e),
+                                    ok = false;
+                                    continue;
+                                }
+                                _ => panic!("unable to create destination directory: {}", e),
+                            };
                         },
                     };
 
@@ -259,6 +267,7 @@ impl Operation {
                                     strip_prefix(destination_file, &container).display()
                                 );
 
+                                ok = false;
                                 continue;
                             }
                             _ => panic!("unable to open destination file: {}", e),
@@ -304,11 +313,15 @@ impl Operation {
                         to.set_times(times).expect("unable to set file times");
                     }
                 }
+
+                ok
             }
             Operation::CreateDirectories {
                 directories,
                 verbose,
             } => {
+                let mut ok = true;
+
                 for directory in directories {
                     match fs::create_dir_all(container.as_ref().join(&directory)) {
                         Ok(_) => {
@@ -328,14 +341,17 @@ impl Operation {
                                     strip_prefix(directory, &container).display(),
                                 );
 
+                                ok = false;
                                 continue;
                             }
                             _ => panic!("unable to create directory: {}", e),
                         },
                     };
                 }
+
+                ok
             }
-        };
+        }
     }
 }
 
@@ -380,9 +396,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
         assert_eq!(read_to_string(root.join("destination/a.txt")).unwrap(), "a");
         assert_eq!(read_to_string(root.join("destination/b.txt")).unwrap(), "b");
         assert_eq!(read_to_string(root.join("destination/c.txt")).unwrap(), "c");
@@ -406,8 +422,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
+        assert_eq!(success, false, "execution should report failure");
         assert!(err_out.contains("winstall: skipping directory 'directory'"));
     }
 
@@ -428,8 +445,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
+        assert_eq!(success, false, "execution should report failure");
         assert!(err_out.contains("winstall: cannot stat 'missing.txt': No such file or directory"));
     }
 
@@ -455,14 +473,14 @@ mod tests {
 
         thread::sleep(Duration::from_millis(100));
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
         let copy_meta = File::open(root.join("destination/a.txt"))
             .expect("unable to open copy")
             .metadata()
             .expect("unable to get file metadata");
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_ne!(
             original_meta.accessed().unwrap(),
@@ -499,12 +517,12 @@ mod tests {
 
         thread::sleep(Duration::from_millis(100));
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
         let copy_meta =
             fs::metadata(root.join("destination/a.txt")).expect("unable to get file metadata");
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             original_meta.accessed().unwrap(),
@@ -539,9 +557,10 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
+
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
             "pass"
@@ -572,9 +591,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
@@ -616,9 +635,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
@@ -655,9 +674,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
@@ -696,9 +715,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
@@ -742,9 +761,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/a.txt")).unwrap(),
@@ -785,7 +804,9 @@ mod tests {
             verbose: true,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
+
+        assert_eq!(success, true, "execution should report success");
 
         assert!(err_out.contains(
             format!(
@@ -817,7 +838,9 @@ mod tests {
             verbose: true,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
+
+        assert_eq!(success, true, "execution should report success");
 
         assert!(err_out.contains(
             format!(
@@ -848,7 +871,9 @@ mod tests {
             verbose: true,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
+
+        assert_eq!(success, true, "execution should report success");
 
         assert!(err_out.contains(
             format!(
@@ -880,7 +905,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&cwd, &mut err_out);
+        let success = operation.execute(&cwd, &mut err_out);
+
+        assert_eq!(success, false, "execution should report failure");
 
         assert!(err_out.contains(
             format!(
@@ -910,7 +937,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&cwd, &mut err_out);
+        let success = operation.execute(&cwd, &mut err_out);
+
+        assert_eq!(success, false, "execution should report failure");
 
         assert!(err_out.contains(
             format!(
@@ -939,9 +968,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/subdirectory/a.txt")).unwrap(),
@@ -966,7 +995,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
+
+        assert_eq!(success, false, "execution should report failure");
 
         assert!(err_out.contains(
             format!(
@@ -997,9 +1028,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
 
         assert_eq!(
             read_to_string(root.join("destination/sub_one/sub_two/a.txt")).unwrap(),
@@ -1026,7 +1057,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&cwd, &mut err_out);
+        let success = operation.execute(&cwd, &mut err_out);
+
+        assert_eq!(success, false, "execution should report failure");
 
         assert!(err_out.contains(
             format!(
@@ -1056,7 +1089,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&cwd, &mut err_out);
+        let success = operation.execute(&cwd, &mut err_out);
+
+        assert_eq!(success, false, "execution should report failure");
 
         assert!(err_out.contains(
             format!(
@@ -1084,9 +1119,10 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
 
-        assert!(err_out.is_empty());
+        assert_eq!(success, true, "execution should report success");
+
         assert!(root.join("a").join("nested").join("directory").is_dir());
         assert!(root.join("top_level").is_dir());
     }
@@ -1102,7 +1138,9 @@ mod tests {
             verbose: true,
         };
 
-        operation.execute(&root, &mut err_out);
+        let success = operation.execute(&root, &mut err_out);
+
+        assert_eq!(success, true, "execution should report success");
 
         assert!(err_out.contains(
             format!(
@@ -1116,9 +1154,6 @@ mod tests {
     #[test]
     fn create_directory_reports_permission_denied_errors() {
         let mut err_out = TestOutputWriter::new();
-        let root = Interim::new("create_directory_reports_permission_denied_errors")
-            .expect("unable to create test root");
-
         let cwd = env::current_dir().expect("unable to get current directory");
 
         let operation = Operation::CreateDirectories {
@@ -1126,7 +1161,9 @@ mod tests {
             verbose: false,
         };
 
-        operation.execute(&cwd, &mut err_out);
+        let success = operation.execute(&cwd, &mut err_out);
+
+        assert_eq!(success, false, "execution should report failure");
 
         assert!(err_out.contains(
             format!(
@@ -1155,10 +1192,6 @@ mod tests {
                 Ok(s) => s.contains(pattern),
                 Err(_) => false,
             }
-        }
-
-        fn is_empty(&self) -> bool {
-            self.0.is_empty()
         }
     }
 

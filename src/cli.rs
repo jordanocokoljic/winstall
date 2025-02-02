@@ -21,6 +21,7 @@ pub struct Provided {
     verbose: bool,
     preserve_timestamps: bool,
     make_all_directories: bool,
+    no_target_directory: bool,
 }
 
 impl Provided {
@@ -31,6 +32,7 @@ impl Provided {
             verbose: false,
             preserve_timestamps: false,
             make_all_directories: false,
+            no_target_directory: false,
         };
 
         let mut peekable = args.peekable();
@@ -38,9 +40,12 @@ impl Provided {
             match arg.as_str() {
                 "-v" | "--verbose" => {
                     provided.verbose = true;
-                },
+                }
                 "-p" | "--preserve-timestamps" => {
                     provided.preserve_timestamps = true;
+                }
+                "-T" | "--no-target-directory" => {
+                    provided.no_target_directory = true;
                 }
                 _ => (),
             }
@@ -93,6 +98,7 @@ mod tests {
                 verbose: true,
                 preserve_timestamps: false,
                 make_all_directories: false,
+                no_target_directory: false,
             }
         );
     }
@@ -110,6 +116,7 @@ mod tests {
                 verbose: true,
                 preserve_timestamps: false,
                 make_all_directories: false,
+                no_target_directory: false,
             }
         );
     }
@@ -127,6 +134,7 @@ mod tests {
                 verbose: false,
                 preserve_timestamps: true,
                 make_all_directories: false,
+                no_target_directory: false,
             }
         );
     }
@@ -144,6 +152,43 @@ mod tests {
                 verbose: false,
                 preserve_timestamps: true,
                 make_all_directories: false,
+                no_target_directory: false,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_short_no_target_directory_correctly() {
+        let args = vec!["-T"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided,
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: true,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_long_no_target_directory_correctly() {
+        let args = vec!["--no-target-directory"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided,
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: true,
             }
         );
     }

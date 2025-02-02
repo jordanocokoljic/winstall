@@ -47,6 +47,9 @@ impl Provided {
                 "-T" | "--no-target-directory" => {
                     provided.no_target_directory = true;
                 }
+                "-D" => {
+                    provided.make_all_directories = true;
+                }
                 _ => (),
             }
         }
@@ -189,6 +192,23 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: true,
+            }
+        );
+    }
+    #[test]
+    fn provided_parses_short_make_all_directories_correctly() {
+        let args = vec!["-D"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided,
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: true,
+                no_target_directory: false,
             }
         );
     }

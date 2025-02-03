@@ -43,22 +43,34 @@ impl Provided {
 
         let mut peekable = args.peekable();
         while let Some(arg) = peekable.next() {
-            match arg.as_str() {
-                "-v" | "--verbose" => {
-                    provided.verbose = true;
-                }
-                "-p" | "--preserve-timestamps" => {
-                    provided.preserve_timestamps = true;
-                }
-                "-T" | "--no-target-directory" => {
-                    provided.no_target_directory = true;
-                }
-                "-D" => {
-                    provided.make_all_directories = true;
-                }
-                "-b" | "--backup" => {
-                    provided.backup = Some(BackupKind::Unspecified);
-                }
+            let mut split = arg.split('=');
+            let (argument, parameter) = (split.next(), split.next());
+
+            match (argument, parameter) {
+                (Some(a), None) => match a {
+                    "-v" | "--verbose" => {
+                        provided.verbose = true;
+                    }
+                    "-p" | "--preserve-timestamps" => {
+                        provided.preserve_timestamps = true;
+                    }
+                    "-T" | "--no-target-directory" => {
+                        provided.no_target_directory = true;
+                    }
+                    "-D" => {
+                        provided.make_all_directories = true;
+                    }
+                    "-b" | "--backup" => {
+                        provided.backup = Some(BackupKind::Unspecified);
+                    }
+                    _ => (),
+                },
+                (Some(a), Some(p)) => match a {
+                    "--backup" => {
+                        provided.backup = Some(BackupKind::Specified(p.to_owned()));
+                    }
+                    _ => (),
+                },
                 _ => (),
             }
         }
@@ -250,6 +262,24 @@ mod tests {
             provided,
             Provided {
                 backup: Some(BackupKind::Unspecified),
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_long_specified_backup_correctly() {
+        let args = vec!["--backup=option"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided,
+            Provided {
+                backup: Some(BackupKind::Specified("option".to_owned())),
                 suffix: None,
                 verbose: false,
                 preserve_timestamps: false,

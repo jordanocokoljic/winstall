@@ -95,9 +95,7 @@ impl Provided {
                     "--suffix" => {
                         provided.suffix = Some(p.to_owned());
                     }
-                    "--target-directory" => {
-                        provided.target_directory = Some(p.to_owned())
-                    }
+                    "--target-directory" => provided.target_directory = Some(p.to_owned()),
                     _ => (),
                 },
                 _ => (),
@@ -139,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_verbose_correctly() {
+    fn provided_parses_short_verbose() {
         let args = vec!["-v"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -158,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_verbose_correctly() {
+    fn provided_parses_long_verbose() {
         let args = vec!["--verbose"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -177,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_preserve_timestamps_correctly() {
+    fn provided_parses_short_preserve_timestamps() {
         let args = vec!["-p"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -196,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_preserve_timestamps_correctly() {
+    fn provided_parses_long_preserve_timestamps() {
         let args = vec!["--preserve-timestamps"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -215,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_no_target_directory_correctly() {
+    fn provided_parses_short_no_target_directory() {
         let args = vec!["-T"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -234,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_no_target_directory_correctly() {
+    fn provided_parses_long_no_target_directory() {
         let args = vec!["--no-target-directory"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -253,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_make_all_directories_correctly() {
+    fn provided_parses_short_make_all_directories() {
         let args = vec!["-D"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -272,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_unspecified_backup_correctly() {
+    fn provided_parses_short_unspecified_backup() {
         let args = vec!["-b"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -291,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_unspecified_backup_correctly() {
+    fn provided_parses_long_unspecified_backup() {
         let args = vec!["--backup"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -310,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_specified_backup_correctly() {
+    fn provided_parses_long_specified_backup() {
         let args = vec!["--backup=option"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -329,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_suffix_correctly() {
+    fn provided_parses_short_suffix() {
         let args = vec!["-S", "option"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -348,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_handles_missing_short_suffix_correctly() {
+    fn provided_handles_missing_short_suffix() {
         let args = vec!["-S"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -359,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_suffix_correctly() {
+    fn provided_parses_long_suffix() {
         let args = vec!["--suffix=option"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -378,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_short_target_directory_correctly() {
+    fn provided_parses_short_target_directory() {
         let args = vec!["-t", "directory"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -397,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_handles_missing_short_target_directory_correctly() {
+    fn provided_handles_missing_short_target_directory() {
         let args = vec!["-t"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
@@ -408,8 +406,10 @@ mod tests {
     }
 
     #[test]
-    fn provided_parses_long_target_directory_correctly() {
-        let args = vec!["--target-directory=directory"].into_iter().map(str::to_owned);
+    fn provided_parses_long_target_directory() {
+        let args = vec!["--target-directory=directory"]
+            .into_iter()
+            .map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
         assert_eq!(

@@ -28,6 +28,7 @@ pub struct Provided {
     preserve_timestamps: bool,
     make_all_directories: bool,
     no_target_directory: bool,
+    target_directory: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -44,6 +45,7 @@ impl Provided {
             preserve_timestamps: false,
             make_all_directories: false,
             no_target_directory: false,
+            target_directory: None,
         };
 
         let mut peekable = args.peekable();
@@ -76,6 +78,14 @@ impl Provided {
 
                         return Err(ParsingError::ArgumentRequired(arg));
                     }
+                    "-t" => {
+                        if let Some(directory) = peekable.next() {
+                            provided.target_directory = Some(directory);
+                            continue;
+                        }
+
+                        return Err(ParsingError::ArgumentRequired(arg));
+                    }
                     _ => (),
                 },
                 (Some(a), Some(p)) => match a {
@@ -84,6 +94,9 @@ impl Provided {
                     }
                     "--suffix" => {
                         provided.suffix = Some(p.to_owned());
+                    }
+                    "--target-directory" => {
+                        provided.target_directory = Some(p.to_owned())
                     }
                     _ => (),
                 },
@@ -139,6 +152,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -157,6 +171,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -175,6 +190,7 @@ mod tests {
                 preserve_timestamps: true,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -193,6 +209,7 @@ mod tests {
                 preserve_timestamps: true,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -211,6 +228,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: true,
+                target_directory: None
             }
         );
     }
@@ -229,6 +247,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: true,
+                target_directory: None
             }
         );
     }
@@ -247,6 +266,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: true,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -265,6 +285,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -283,6 +304,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -301,6 +323,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -319,6 +342,7 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
             }
         );
     }
@@ -348,6 +372,56 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
+                target_directory: None
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_short_target_directory_correctly() {
+        let args = vec!["-t", "directory"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+                target_directory: Some("directory".to_owned())
+            }
+        );
+    }
+
+    #[test]
+    fn provided_handles_missing_short_target_directory_correctly() {
+        let args = vec!["-t"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap_err(),
+            ParsingError::ArgumentRequired("-t".to_owned())
+        );
+    }
+
+    #[test]
+    fn provided_parses_long_target_directory_correctly() {
+        let args = vec!["--target-directory=directory"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+                target_directory: Some("directory".to_owned())
             }
         );
     }

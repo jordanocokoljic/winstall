@@ -30,8 +30,13 @@ pub struct Provided {
     no_target_directory: bool,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ParsingError {
+    ArgumentRequired(String),
+}
+
 impl Provided {
-    pub fn from_arguments(args: impl Iterator<Item = String>) -> Self {
+    pub fn from_arguments(args: impl Iterator<Item = String>) -> Result<Self, ParsingError> {
         let mut provided = Self {
             backup: None,
             suffix: None,
@@ -63,11 +68,22 @@ impl Provided {
                     "-b" | "--backup" => {
                         provided.backup = Some(BackupKind::Unspecified);
                     }
+                    "-S" => {
+                        if let Some(suffix) = peekable.next() {
+                            provided.suffix = Some(suffix);
+                            continue;
+                        }
+
+                        return Err(ParsingError::ArgumentRequired(arg));
+                    }
                     _ => (),
                 },
                 (Some(a), Some(p)) => match a {
                     "--backup" => {
                         provided.backup = Some(BackupKind::Specified(p.to_owned()));
+                    }
+                    "--suffix" => {
+                        provided.suffix = Some(p.to_owned());
                     }
                     _ => (),
                 },
@@ -75,13 +91,13 @@ impl Provided {
             }
         }
 
-        provided
+        Ok(provided)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::{BackupKind, External, Provided};
+    use crate::cli::{BackupKind, External, ParsingError, Provided};
     use std::env;
 
     #[test]
@@ -115,7 +131,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -133,7 +149,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -151,7 +167,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -169,7 +185,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -187,7 +203,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -205,7 +221,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -223,7 +239,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: None,
                 suffix: None,
@@ -241,7 +257,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: Some(BackupKind::Unspecified),
                 suffix: None,
@@ -259,7 +275,7 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: Some(BackupKind::Unspecified),
                 suffix: None,
@@ -277,10 +293,57 @@ mod tests {
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
-            provided,
+            provided.unwrap(),
             Provided {
                 backup: Some(BackupKind::Specified("option".to_owned())),
                 suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_short_suffix_correctly() {
+        let args = vec!["-S", "option"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: Some("option".to_owned()),
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+            }
+        );
+    }
+
+    #[test]
+    fn provided_handles_missing_short_suffix_correctly() {
+        let args = vec!["-S"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap_err(),
+            ParsingError::ArgumentRequired("-S".to_owned())
+        );
+    }
+
+    #[test]
+    fn provided_parses_long_suffix_correctly() {
+        let args = vec!["--suffix=option"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: Some("option".to_owned()),
                 verbose: false,
                 preserve_timestamps: false,
                 make_all_directories: false,

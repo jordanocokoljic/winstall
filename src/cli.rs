@@ -32,12 +32,12 @@ pub struct Provided {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ParsingError {
+pub enum ArgumentError {
     ArgumentRequired(String),
 }
 
 impl Provided {
-    pub fn from_arguments(args: impl Iterator<Item = String>) -> Result<Self, ParsingError> {
+    pub fn from_arguments(args: impl Iterator<Item = String>) -> Result<Self, ArgumentError> {
         let mut provided = Self {
             backup: None,
             suffix: None,
@@ -76,7 +76,7 @@ impl Provided {
                             continue;
                         }
 
-                        return Err(ParsingError::ArgumentRequired(arg));
+                        return Err(ArgumentError::ArgumentRequired(arg));
                     }
                     "-t" => {
                         if let Some(directory) = peekable.next() {
@@ -84,7 +84,7 @@ impl Provided {
                             continue;
                         }
 
-                        return Err(ParsingError::ArgumentRequired(arg));
+                        return Err(ArgumentError::ArgumentRequired(arg));
                     }
                     _ => (),
                 },
@@ -108,7 +108,7 @@ impl Provided {
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::{BackupKind, External, ParsingError, Provided};
+    use crate::cli::{BackupKind, External, ArgumentError, Provided};
     use std::env;
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
 
         assert_eq!(
             provided.unwrap_err(),
-            ParsingError::ArgumentRequired("-S".to_owned())
+            ArgumentError::ArgumentRequired("-S".to_owned())
         );
     }
 
@@ -401,7 +401,7 @@ mod tests {
 
         assert_eq!(
             provided.unwrap_err(),
-            ParsingError::ArgumentRequired("-t".to_owned())
+            ArgumentError::ArgumentRequired("-t".to_owned())
         );
     }
 

@@ -29,6 +29,7 @@ pub struct Provided {
     make_all_directories: bool,
     no_target_directory: bool,
     target_directory: Option<String>,
+    arguments: Vec<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -46,29 +47,35 @@ impl Provided {
             make_all_directories: false,
             no_target_directory: false,
             target_directory: None,
+            arguments: Vec::new(),
         };
 
         let mut peekable = args.peekable();
         while let Some(arg) = peekable.next() {
             let mut split = arg.split('=');
-            let (argument, parameter) = (split.next(), split.next());
+            let (argument, parameter) = (unsafe { split.next().unwrap_unchecked() }, split.next());
 
             match (argument, parameter) {
-                (Some(a), None) => match a {
+                (a, None) => match a {
                     "-v" | "--verbose" => {
                         provided.verbose = true;
+                        continue;
                     }
                     "-p" | "--preserve-timestamps" => {
                         provided.preserve_timestamps = true;
+                        continue;
                     }
                     "-T" | "--no-target-directory" => {
                         provided.no_target_directory = true;
+                        continue;
                     }
                     "-D" => {
                         provided.make_all_directories = true;
+                        continue;
                     }
                     "-b" | "--backup" => {
                         provided.backup = Some(BackupKind::Unspecified);
+                        continue;
                     }
                     "-S" => {
                         if let Some(suffix) = peekable.next() {
@@ -88,18 +95,24 @@ impl Provided {
                     }
                     _ => (),
                 },
-                (Some(a), Some(p)) => match a {
+                (a, Some(p)) => match a {
                     "--backup" => {
                         provided.backup = Some(BackupKind::Specified(p.to_owned()));
+                        continue;
                     }
                     "--suffix" => {
                         provided.suffix = Some(p.to_owned());
+                        continue;
                     }
-                    "--target-directory" => provided.target_directory = Some(p.to_owned()),
+                    "--target-directory" => {
+                        provided.target_directory = Some(p.to_owned());
+                        continue;
+                    },
                     _ => (),
                 },
-                _ => (),
             }
+
+            provided.arguments.push(argument.to_owned());
         }
 
         Ok(provided)
@@ -108,7 +121,7 @@ impl Provided {
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::{BackupKind, External, ArgumentError, Provided};
+    use crate::cli::{ArgumentError, BackupKind, External, Provided};
     use std::env;
 
     #[test]
@@ -150,7 +163,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -169,7 +183,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -188,7 +203,8 @@ mod tests {
                 preserve_timestamps: true,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -207,7 +223,8 @@ mod tests {
                 preserve_timestamps: true,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -226,7 +243,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: true,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -245,7 +263,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: true,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -264,7 +283,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: true,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -283,7 +303,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -302,7 +323,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -321,7 +343,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -340,7 +363,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -370,7 +394,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: None
+                target_directory: None,
+                arguments: Vec::new(),
             }
         );
     }
@@ -389,7 +414,8 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: Some("directory".to_owned())
+                target_directory: Some("directory".to_owned()),
+                arguments: Vec::new(),
             }
         );
     }
@@ -410,6 +436,7 @@ mod tests {
         let args = vec!["--target-directory=directory"]
             .into_iter()
             .map(str::to_owned);
+
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
@@ -421,8 +448,29 @@ mod tests {
                 preserve_timestamps: false,
                 make_all_directories: false,
                 no_target_directory: false,
-                target_directory: Some("directory".to_owned())
+                target_directory: Some("directory".to_owned()),
+                arguments: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn provided_collects_arguments() {
+        let args = vec!["a", "b", "c"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+                target_directory: None,
+                arguments: vec!["a".to_owned(), "b".to_owned(), "c".to_owned()],
+            }
+        )
     }
 }

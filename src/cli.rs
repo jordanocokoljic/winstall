@@ -29,6 +29,7 @@ pub struct Provided {
     make_all_directories: bool,
     no_target_directory: bool,
     target_directory: Option<String>,
+    directory_arguments: bool,
     arguments: Vec<String>,
 }
 
@@ -47,6 +48,7 @@ impl Provided {
             make_all_directories: false,
             no_target_directory: false,
             target_directory: None,
+            directory_arguments: false,
             arguments: Vec::new(),
         };
 
@@ -64,6 +66,7 @@ impl Provided {
                     "-p" | "--preserve-timestamps" => provided.preserve_timestamps = true,
                     "-T" | "--no-target-directory" => provided.no_target_directory = true,
                     "-D" => provided.make_all_directories = true,
+                    "-d" | "--directory" => provided.directory_arguments = true,
                     "-b" | "--backup" => match try_capture() {
                         Some(s) => provided.backup = Some(BackupKind::Specified(s)),
                         None => provided.backup = Some(BackupKind::Unspecified),
@@ -134,6 +137,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -154,6 +158,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -174,6 +179,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -194,6 +200,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -214,6 +221,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: true,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -234,6 +242,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: true,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -254,6 +263,7 @@ mod tests {
                 make_all_directories: true,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -274,6 +284,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -294,6 +305,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -314,6 +326,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -334,6 +347,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -365,6 +379,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -385,6 +400,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: Some("directory".to_owned()),
+                directory_arguments: false,
                 arguments: Vec::new(),
             }
         );
@@ -419,6 +435,49 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: Some("directory".to_owned()),
+                directory_arguments: false,
+                arguments: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_short_directory_arguments() {
+        let args = vec!["-d"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+                target_directory: None,
+                directory_arguments: true,
+                arguments: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn provided_parses_long_directory_arguments() {
+        let args = vec!["--directory"].into_iter().map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+                target_directory: None,
+                directory_arguments: true,
                 arguments: Vec::new(),
             }
         );
@@ -439,6 +498,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
+                directory_arguments: false,
                 arguments: vec!["one".to_owned(), "two".to_owned(), "three".to_owned()],
             }
         )

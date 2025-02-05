@@ -51,65 +51,35 @@ impl Provided {
         };
 
         let mut peekable = args.peekable();
-        while let Some(arg) = peekable.next() {
+        'arguments: while let Some(arg) = peekable.next() {
             let mut split = arg.split('=');
-            let (argument, parameter) = (unsafe { split.next().unwrap_unchecked() }, split.next());
+            let argument = split.next().unwrap();
 
-            match (argument, parameter) {
-                (a, None) => match a {
-                    "-v" | "--verbose" => {
-                        provided.verbose = true;
-                        continue;
-                    }
-                    "-p" | "--preserve-timestamps" => {
-                        provided.preserve_timestamps = true;
-                        continue;
-                    }
-                    "-T" | "--no-target-directory" => {
-                        provided.no_target_directory = true;
-                        continue;
-                    }
-                    "-D" => {
-                        provided.make_all_directories = true;
-                        continue;
-                    }
-                    "-b" | "--backup" => {
-                        provided.backup = Some(BackupKind::Unspecified);
-                        continue;
-                    }
-                    "-S" => {
-                        if let Some(suffix) = peekable.next() {
-                            provided.suffix = Some(suffix);
-                            continue;
-                        }
+            let mut try_capture =
+                || -> Option<String> { split.next().map(str::to_owned).or(peekable.next()) };
 
-                        return Err(ArgumentError::ArgumentRequired(arg));
-                    }
-                    "-t" => {
-                        if let Some(directory) = peekable.next() {
-                            provided.target_directory = Some(directory);
-                            continue;
-                        }
-
-                        return Err(ArgumentError::ArgumentRequired(arg));
-                    }
-                    _ => (),
-                },
-                (a, Some(p)) => match a {
-                    "--backup" => {
-                        provided.backup = Some(BackupKind::Specified(p.to_owned()));
-                        continue;
-                    }
-                    "--suffix" => {
-                        provided.suffix = Some(p.to_owned());
-                        continue;
-                    }
-                    "--target-directory" => {
-                        provided.target_directory = Some(p.to_owned());
-                        continue;
+            'nocapture: {
+                match argument {
+                    "-v" | "--verbose" => provided.verbose = true,
+                    "-p" | "--preserve-timestamps" => provided.preserve_timestamps = true,
+                    "-T" | "--no-target-directory" => provided.no_target_directory = true,
+                    "-D" => provided.make_all_directories = true,
+                    "-b" | "--backup" => match try_capture() {
+                        Some(s) => provided.backup = Some(BackupKind::Specified(s)),
+                        None => provided.backup = Some(BackupKind::Unspecified),
                     },
-                    _ => (),
-                },
+                    "-S" | "--suffix" => match try_capture() {
+                        Some(s) => provided.suffix = Some(s),
+                        None => return Err(ArgumentError::ArgumentRequired(arg)),
+                    },
+                    "-t" | "--target-directory" => match try_capture() {
+                        Some(s) => provided.target_directory = Some(s),
+                        None => return Err(ArgumentError::ArgumentRequired(arg)),
+                    },
+                    _ => break 'nocapture,
+                }
+
+                continue 'arguments;
             }
 
             provided.arguments.push(argument.to_owned());
@@ -456,7 +426,7 @@ mod tests {
 
     #[test]
     fn provided_collects_arguments() {
-        let args = vec!["a", "b", "c"].into_iter().map(str::to_owned);
+        let args = vec!["one", "two", "three"].into_iter().map(str::to_owned);
         let provided = Provided::from_arguments(args);
 
         assert_eq!(
@@ -469,7 +439,7 @@ mod tests {
                 make_all_directories: false,
                 no_target_directory: false,
                 target_directory: None,
-                arguments: vec!["a".to_owned(), "b".to_owned(), "c".to_owned()],
+                arguments: vec!["one".to_owned(), "two".to_owned(), "three".to_owned()],
             }
         )
     }

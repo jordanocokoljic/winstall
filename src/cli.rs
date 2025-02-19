@@ -57,8 +57,9 @@ impl Provided {
             let mut split = arg.split('=');
             let argument = split.next().unwrap();
 
-            let mut try_capture =
-                || -> Option<String> { split.next().map(str::to_owned).or(peekable.next()) };
+            let mut try_capture = || -> Option<String> {
+                split.next().map(str::to_owned).or_else(|| peekable.next())
+            };
 
             'nocapture: {
                 match argument {
@@ -502,5 +503,28 @@ mod tests {
                 arguments: vec!["one".to_owned(), "two".to_owned(), "three".to_owned()],
             }
         )
+    }
+
+    #[test]
+    fn provided_does_not_collect_potential_long_arguments_too_aggressively() {
+        let args = vec!["--target-directory=one", "two", "three"]
+            .into_iter()
+            .map(str::to_owned);
+        let provided = Provided::from_arguments(args);
+
+        assert_eq!(
+            provided.unwrap(),
+            Provided {
+                backup: None,
+                suffix: None,
+                verbose: false,
+                preserve_timestamps: false,
+                make_all_directories: false,
+                no_target_directory: false,
+                target_directory: Some("one".to_owned()),
+                directory_arguments: false,
+                arguments: vec!["two".to_owned(), "three".to_owned()],
+            }
+        );
     }
 }

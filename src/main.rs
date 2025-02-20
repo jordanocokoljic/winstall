@@ -1,5 +1,6 @@
 mod cli;
 mod declare_fs;
+mod core_fs;
 
 fn main() {
     /*

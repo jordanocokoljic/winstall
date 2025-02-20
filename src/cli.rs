@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn provided_does_not_collect_potential_long_arguments_too_aggressively() {
+    fn provided_does_not_greedily_consume_possible_long_arguments() {
         let args = vec!["--target-directory=one", "two", "three"]
             .into_iter()
             .map(str::to_owned);
